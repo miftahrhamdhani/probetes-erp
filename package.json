@@ -1,0 +1,23 @@
+{
+  "name": "probetes-erp",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:web": "pnpm --filter @probetes/web dev",
+    "dev:api": "pnpm --filter @probetes/api start:dev",
+    "build": "turbo build",
+    "build:web": "pnpm --filter @probetes/web build",
+    "build:api": "pnpm --filter @probetes/api build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

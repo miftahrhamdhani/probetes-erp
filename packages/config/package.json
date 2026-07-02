@@ -1,0 +1,13 @@
+{
+  "name": "@probetes/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./typescript/base": "./typescript/base.json",
+    "./typescript/nextjs": "./typescript/nextjs.json",
+    "./typescript/nestjs": "./typescript/nestjs.json",
+    "./tailwind/preset": "./tailwind/preset.ts",
+    "./prettier": "./prettier.config.js"
+  }
+}
