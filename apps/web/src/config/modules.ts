@@ -39,9 +39,9 @@ export const erpModules = [
     isActive: true
   },
   {
-    id: "produksi",
-    name: "Produksi",
-    description: "Batch produk, HPP, kebutuhan bahan.",
+    id: "data-tracking",
+    name: "Data Tracking",
+    description: "Resi, status kirim, retur, dan pengiriman.",
     badge: "Next soon",
     badgeTone: "neutral"
   },

@@ -3,7 +3,9 @@ node_modules
 .turbo
 .next
 dist
+build
 coverage
+logs
 .env
 .env.*
 !.env.example
