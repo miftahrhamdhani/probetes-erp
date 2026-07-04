@@ -2,13 +2,9 @@ import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import {
   BarChart3,
-  CopyCheck,
-  GitMerge,
-  Package,
-  Send,
-  Server,
-  TriangleAlert,
-  Upload,
+  Database,
+  ShieldCheck,
+  HardDrive,
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -23,20 +19,18 @@ const badgeToneClass: Record<DatabaseMenu["badgeTone"], string> = {
   blue: "bg-white/20 text-white ring-1 ring-white/30",
   neutral: "bg-black/15 text-white/90 ring-1 ring-black/10",
   active: "bg-white text-brand-red shadow-sm",
+  monitoring: "bg-white/20 text-white ring-1 ring-white/30",
 };
 
 const menuIcon: Record<string, LucideIcon> = {
-  overview: BarChart3,
-  "import-center": Upload,
-  "source-systems": Server,
-  "validation-issues": TriangleAlert,
-  "duplicate-review": CopyCheck,
-  "mapping-center": GitMerge,
-  "publish-center": Send,
+  "data-overview": BarChart3,
+  "master-data": Database,
+  "data-quality": ShieldCheck,
+  "backup-status": HardDrive,
 };
 
 export function DatabaseMenuCard({ menu }: DatabaseMenuCardProps) {
-  const Icon = menuIcon[menu.id] ?? Package;
+  const Icon = menuIcon[menu.id] ?? Database;
 
   return (
     <Link

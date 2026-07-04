@@ -13,11 +13,11 @@ export function DatabaseMenuGrid({ menus }: DatabaseMenuGridProps) {
           Pilih Menu Database
         </h2>
         <p className="mt-1.5 text-sm font-medium text-slate-600 sm:text-base">
-          Fase awal fokus pada import, validasi, mapping, dan publish data.
+          Pantau data utama ERP, kualitas data, dan status backup sistem.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {menus.map((menu) => (
           <DatabaseMenuCard key={menu.id} menu={menu} />
         ))}
