@@ -1,37 +1,25 @@
 import type { OverviewSectionId } from "../types/databaseOverview.types";
-import { AuditActivitySection } from "./sections/AuditActivitySection";
-import { DataQualitySection } from "./sections/DataQualitySection";
-import { ImportBatchesSection } from "./sections/ImportBatchesSection";
-import { MappingProgressSection } from "./sections/MappingProgressSection";
-import { PipelineStatusSection } from "./sections/PipelineStatusSection";
-import { ProblemQueueSection } from "./sections/ProblemQueueSection";
-import { PublishReadinessSection } from "./sections/PublishReadinessSection";
-import { SourceCoverageSection } from "./sections/SourceCoverageSection";
-import { SummaryKpiSection } from "./sections/SummaryKpiSection";
-import { ValidationIssuesSection } from "./sections/ValidationIssuesSection";
+import { AvailableDataSummarySection } from "./sections/AvailableDataSummarySection";
+import { DataSecurityBackupSection } from "./sections/DataSecurityBackupSection";
+import { InitialDataQualitySection } from "./sections/InitialDataQualitySection";
+import { MainDataReadinessSection } from "./sections/MainDataReadinessSection";
+import { OrderSalesComparisonSection } from "./sections/OrderSalesComparisonSection";
+import { ProductNameReviewSection } from "./sections/ProductNameReviewSection";
 
 export function OverviewContent({ activeId }: { activeId: OverviewSectionId }) {
   switch (activeId) {
-    case "source-coverage":
-      return <SourceCoverageSection />;
-    case "pipeline-status":
-      return <PipelineStatusSection />;
-    case "data-quality":
-      return <DataQualitySection />;
-    case "validation-issues":
-      return <ValidationIssuesSection />;
-    case "mapping-progress":
-      return <MappingProgressSection />;
-    case "import-batches":
-      return <ImportBatchesSection />;
-    case "problem-queue":
-      return <ProblemQueueSection />;
-    case "publish-readiness":
-      return <PublishReadinessSection />;
-    case "audit-activity":
-      return <AuditActivitySection />;
-    case "summary-kpi":
+    case "order-sales-comparison":
+      return <OrderSalesComparisonSection />;
+    case "main-data-readiness":
+      return <MainDataReadinessSection />;
+    case "product-name-review":
+      return <ProductNameReviewSection />;
+    case "initial-data-quality":
+      return <InitialDataQualitySection />;
+    case "data-security-backup":
+      return <DataSecurityBackupSection />;
+    case "available-data-summary":
     default:
-      return <SummaryKpiSection />;
+      return <AvailableDataSummarySection />;
   }
 }

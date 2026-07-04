@@ -9,7 +9,7 @@ interface OverviewMenuGridProps {
 
 export function OverviewMenuGrid({ menus, activeId, onSelect }: OverviewMenuGridProps) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {menus.map((menu) => (
         <OverviewMenuCard key={menu.id} menu={menu} isActive={menu.id === activeId} onSelect={onSelect} />
       ))}

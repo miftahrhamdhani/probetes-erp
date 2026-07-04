@@ -1,26 +1,18 @@
 export type OverviewSectionId =
-  | "summary-kpi"
-  | "source-coverage"
-  | "pipeline-status"
-  | "data-quality"
-  | "validation-issues"
-  | "mapping-progress"
-  | "import-batches"
-  | "problem-queue"
-  | "publish-readiness"
-  | "audit-activity";
+  | "available-data-summary"
+  | "order-sales-comparison"
+  | "main-data-readiness"
+  | "product-name-review"
+  | "initial-data-quality"
+  | "data-security-backup";
 
 export type OverviewIconKey =
   | "bar-chart"
+  | "shopping-cart"
   | "database"
-  | "workflow"
+  | "tag"
   | "shield"
-  | "alert"
-  | "merge"
-  | "download"
-  | "list-checks"
-  | "check-circle"
-  | "clipboard";
+  | "lock";
 
 export interface OverviewMenu {
   id: OverviewSectionId;

@@ -8,14 +8,14 @@ import { OverviewMenuGrid } from "./components/OverviewMenuGrid";
 import type { OverviewSectionId } from "./types/databaseOverview.types";
 
 export function DatabaseOverviewPage() {
-  const [activeOverviewSection, setActiveOverviewSection] = useState<OverviewSectionId>("summary-kpi");
+  const [activeOverviewSection, setActiveOverviewSection] = useState<OverviewSectionId>("available-data-summary");
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#eef2f6]/90 text-brand-deep">
       <AppHeader />
       <main className="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-5 py-6 sm:px-7 lg:px-10">
         <div>
-          <h1 className="text-3xl font-black tracking-[-0.045em] text-slate-950 sm:text-4xl">Database Overview</h1>
+          <h1 className="text-3xl font-black tracking-[-0.045em] text-slate-950 sm:text-4xl">Ringkasan Data</h1>
           <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-600 sm:text-base">
             Pantau kesehatan, kualitas, dan kesiapan data ERP dalam satu halaman.
           </p>

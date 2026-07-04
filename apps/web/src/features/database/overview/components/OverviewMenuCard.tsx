@@ -1,19 +1,15 @@
 import type { LucideIcon } from "lucide-react";
-import { BarChart3, CheckCircle2, ChevronRight, ClipboardList, Database, Download, GitMerge, ListChecks, ShieldCheck, TriangleAlert, Workflow } from "lucide-react";
+import { BarChart3, ChevronRight, Database, Lock, ShieldCheck, ShoppingCart, Tag } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { OverviewIconKey, OverviewMenu } from "../types/databaseOverview.types";
 
 const iconMap: Record<OverviewIconKey, LucideIcon> = {
   "bar-chart": BarChart3,
+  "shopping-cart": ShoppingCart,
   database: Database,
-  workflow: Workflow,
+  tag: Tag,
   shield: ShieldCheck,
-  alert: TriangleAlert,
-  merge: GitMerge,
-  download: Download,
-  "list-checks": ListChecks,
-  "check-circle": CheckCircle2,
-  clipboard: ClipboardList,
+  lock: Lock,
 };
 
 interface OverviewMenuCardProps {
@@ -40,7 +36,7 @@ export function OverviewMenuCard({ menu, isActive, onSelect }: OverviewMenuCardP
           <Icon className="size-6 text-slate-950" strokeWidth={2.25} />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-base font-black tracking-[-0.03em] text-white">{menu.title}</h3>
+          <h3 className="text-sm font-black leading-tight tracking-[-0.02em] text-white">{menu.title}</h3>
           {menu.badge && (
             <span className="mt-2 inline-flex rounded-full bg-white px-2.5 py-1 text-xs font-black text-brand-red shadow-sm">
               {menu.badge}
