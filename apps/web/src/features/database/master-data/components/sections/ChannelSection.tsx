@@ -6,6 +6,7 @@ import { StatusBadge } from "@/features/database/overview/components/StatusBadge
 import { usePagedData } from "../../hooks/usePagedData";
 import { formatNumber, formatRupiah } from "../../lib/format";
 import { TablePagination } from "../TablePagination";
+import { TableToolbar, ToolbarSelect } from "../TableToolbar";
 
 interface ChannelRow {
   id: string;
@@ -27,28 +28,29 @@ interface MitraRow {
 }
 
 const kpiItems = [
-  { label: "Channel Platform", value: "5", detail: "Aktif", tone: "green" as const },
+  { label: "Channel", value: "6", detail: "Termasuk Stokis", tone: "green" as const },
   { label: "Divisi Tim", value: "4", detail: "Terpisah", tone: "blue" as const },
   { label: "Mitra", value: "6", detail: "Tabel sendiri", tone: "green" as const },
-  { label: "Order Tanpa Platform", value: "25.964", detail: "Perlu dicek", tone: "amber" as const },
+  { label: "Transaksi Tanpa Platform", value: "21.026", detail: "Perlu dicek", tone: "amber" as const },
 ];
 
 const divisiRows = [
-  { name: "Akuisisi", orders: "16.713" },
-  { name: "CRM", orders: "16.315" },
-  { name: "Marketplace", orders: "9.360" },
-  { name: "CS", orders: "2" },
+  { name: "Akuisisi", orders: "15.548" },
+  { name: "CRM", orders: "8.971" },
+  { name: "Marketplace", orders: "7.311" },
+  { name: "CS", orders: "1" },
 ];
 
 const notes = [
-  "Channel = tempat order masuk (TikTok, Shopee, Meta). Divisi = tim yang mengerjakan (Akuisisi, CRM). Keduanya dipisah sesuai keputusan owner.",
+  "Channel = tempat order masuk. Jenisnya 4: Akuisisi (iklan), Retensi (CRM/WA), Marketplace (TikTok/Shopee), dan Offline (Stokis) — sesuai arahan owner.",
+  "Stokis = jalur penjualan lewat agen offline. Masih 0 karena data lama belum ada transaksi offline; tempatnya sudah disiapkan.",
   "'Belum Tercatat' artinya platform tidak dicatat di data lama — bukan data hilang. Ke depan channel wajib diisi saat input.",
   "Mitra (UP DM, JAWARA, dll.) dicatat pada tabel sendiri, bukan dicampur ke channel.",
 ];
 
 export function ChannelSection() {
-  const channels = usePagedData<ChannelRow>("/data/channels.json");
-  const mitra = usePagedData<MitraRow>("/data/mitra.json");
+  const channels = usePagedData<ChannelRow>("/data/channels.json", ["id", "name", "type", "original"]);
+  const mitra = usePagedData<MitraRow>("/data/mitra.json", ["id", "name", "original"]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -67,6 +69,43 @@ export function ChannelSection() {
         )}
         {!channels.loading && !channels.error && (
           <>
+            <TableToolbar
+              query={channels.query}
+              onQuery={channels.setQuery}
+              placeholder="Cari channel, jenis, nama asli…"
+              total={channels.total}
+              totalAll={channels.totalAll}
+              onReset={channels.resetControls}
+              hasActive={channels.hasActiveControls}
+            >
+              <ToolbarSelect
+                value={channels.filters.type ?? ""}
+                onChange={(v) => channels.setFilter("type", v)}
+                allLabel="Semua Jenis"
+                options={channels.distinct("type").map((t) => ({ value: t, label: t }))}
+              />
+              <ToolbarSelect
+                value={channels.filters.status ?? ""}
+                onChange={(v) => channels.setFilter("status", v)}
+                allLabel="Semua Status"
+                options={["Aktif", "Perlu review"].map((s) => ({ value: s, label: s }))}
+              />
+              <ToolbarSelect
+                value={channels.sort}
+                onChange={channels.setSort}
+                allLabel="Urutan asli"
+                options={[
+                  { value: "orders:desc", label: "Pesanan terbanyak" },
+                  { value: "value:desc", label: "Nilai terbesar" },
+                  { value: "name:asc", label: "Channel A-Z" },
+                ]}
+              />
+            </TableToolbar>
+            {channels.total === 0 && (
+              <p className="py-6 text-center text-sm font-medium text-slate-400">
+                Tidak ada data yang cocok dengan pencarian/filter.
+              </p>
+            )}
             <div className="max-h-[560px] overflow-auto">
               <table className="w-full min-w-[680px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">
@@ -119,6 +158,37 @@ export function ChannelSection() {
           )}
           {!mitra.loading && !mitra.error && (
             <>
+              <TableToolbar
+                query={mitra.query}
+                onQuery={mitra.setQuery}
+                placeholder="Cari mitra…"
+                total={mitra.total}
+                totalAll={mitra.totalAll}
+                onReset={mitra.resetControls}
+                hasActive={mitra.hasActiveControls}
+              >
+                <ToolbarSelect
+                  value={mitra.filters.status ?? ""}
+                  onChange={(v) => mitra.setFilter("status", v)}
+                  allLabel="Semua Status"
+                  options={["Aktif", "Perlu review"].map((s) => ({ value: s, label: s }))}
+                />
+                <ToolbarSelect
+                  value={mitra.sort}
+                  onChange={mitra.setSort}
+                  allLabel="Urutan asli"
+                  options={[
+                    { value: "orders:desc", label: "Pesanan terbanyak" },
+                    { value: "value:desc", label: "Nilai terbesar" },
+                    { value: "name:asc", label: "Mitra A-Z" },
+                  ]}
+                />
+              </TableToolbar>
+              {mitra.total === 0 && (
+                <p className="py-6 text-center text-sm font-medium text-slate-400">
+                  Tidak ada data yang cocok dengan pencarian/filter.
+                </p>
+              )}
               <div className="max-h-[420px] overflow-auto">
                 <table className="w-full min-w-[560px] text-sm">
                   <thead className="sticky top-0 z-10 bg-white">

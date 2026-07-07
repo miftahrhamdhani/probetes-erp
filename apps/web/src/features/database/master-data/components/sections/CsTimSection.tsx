@@ -7,6 +7,7 @@ import type { StatusTone } from "@/features/database/overview/types/databaseOver
 import { usePagedData } from "../../hooks/usePagedData";
 import { formatNumber } from "../../lib/format";
 import { TablePagination } from "../TablePagination";
+import { TableToolbar, ToolbarSelect } from "../TableToolbar";
 
 interface UserRow {
   id: string;
@@ -46,8 +47,8 @@ const notes = [
 ];
 
 export function CsTimSection() {
-  const users = usePagedData<UserRow>("/data/users.json");
-  const sumberLain = usePagedData<SumberLainRow>("/data/sumber_lain.json");
+  const users = usePagedData<UserRow>("/data/users.json", ["id", "name", "role", "divisi"]);
+  const sumberLain = usePagedData<SumberLainRow>("/data/sumber_lain.json", ["name", "jenis"]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -66,6 +67,42 @@ export function CsTimSection() {
         )}
         {!users.loading && !users.error && (
           <>
+            <TableToolbar
+              query={users.query}
+              onQuery={users.setQuery}
+              placeholder="Cari nama, role, divisi…"
+              total={users.total}
+              totalAll={users.totalAll}
+              onReset={users.resetControls}
+              hasActive={users.hasActiveControls}
+            >
+              <ToolbarSelect
+                value={users.filters.role ?? ""}
+                onChange={(v) => users.setFilter("role", v)}
+                allLabel="Semua Role"
+                options={users.distinct("role").map((r) => ({ value: r, label: r }))}
+              />
+              <ToolbarSelect
+                value={users.filters.status ?? ""}
+                onChange={(v) => users.setFilter("status", v)}
+                allLabel="Semua Status"
+                options={["Aktif", "Perlu dicek"].map((s) => ({ value: s, label: s }))}
+              />
+              <ToolbarSelect
+                value={users.sort}
+                onChange={users.setSort}
+                allLabel="Urutan asli"
+                options={[
+                  { value: "orders:desc", label: "Pesanan terbanyak" },
+                  { value: "name:asc", label: "Nama A-Z" },
+                ]}
+              />
+            </TableToolbar>
+            {users.total === 0 && (
+              <p className="py-6 text-center text-sm font-medium text-slate-400">
+                Tidak ada data yang cocok dengan pencarian/filter.
+              </p>
+            )}
             <div className="max-h-[560px] overflow-auto">
               <table className="w-full min-w-[600px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">
@@ -116,6 +153,36 @@ export function CsTimSection() {
           )}
           {!sumberLain.loading && !sumberLain.error && (
             <>
+              <TableToolbar
+                query={sumberLain.query}
+                onQuery={sumberLain.setQuery}
+                placeholder="Cari nama bukan user…"
+                total={sumberLain.total}
+                totalAll={sumberLain.totalAll}
+                onReset={sumberLain.resetControls}
+                hasActive={sumberLain.hasActiveControls}
+              >
+                <ToolbarSelect
+                  value={sumberLain.filters.jenis ?? ""}
+                  onChange={(v) => sumberLain.setFilter("jenis", v)}
+                  allLabel="Semua Jenis"
+                  options={sumberLain.distinct("jenis").map((j) => ({ value: j, label: j }))}
+                />
+                <ToolbarSelect
+                  value={sumberLain.sort}
+                  onChange={sumberLain.setSort}
+                  allLabel="Urutan asli"
+                  options={[
+                    { value: "orders:desc", label: "Pesanan terbanyak" },
+                    { value: "name:asc", label: "Nama A-Z" },
+                  ]}
+                />
+              </TableToolbar>
+              {sumberLain.total === 0 && (
+                <p className="py-6 text-center text-sm font-medium text-slate-400">
+                  Tidak ada data yang cocok dengan pencarian/filter.
+                </p>
+              )}
               <div className="max-h-[420px] overflow-auto">
                 <table className="w-full min-w-[420px] text-sm">
                   <thead className="sticky top-0 z-10 bg-white">

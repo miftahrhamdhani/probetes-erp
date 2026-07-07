@@ -6,6 +6,7 @@ import { StatusBadge } from "@/features/database/overview/components/StatusBadge
 import { usePagedData } from "../../hooks/usePagedData";
 import { formatNumber } from "../../lib/format";
 import { TablePagination } from "../TablePagination";
+import { TableToolbar, ToolbarSelect } from "../TableToolbar";
 
 interface CourierRow {
   id: string;
@@ -30,8 +31,10 @@ const notes = [
 ];
 
 export function EkspedisiSection() {
-  const { rows, total, loading, error, page, setPage, pageSize, setPageSize, totalPages } =
-    usePagedData<CourierRow>("/data/couriers.json");
+  const {
+    rows, total, totalAll, loading, error, page, setPage, pageSize, setPageSize, totalPages,
+    query, setQuery, filters, setFilter, sort, setSort, resetControls, hasActiveControls, distinct,
+  } = usePagedData<CourierRow>("/data/couriers.json", ["id", "name", "original", "service"]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -50,6 +53,42 @@ export function EkspedisiSection() {
         )}
         {!loading && !error && (
           <>
+            <TableToolbar
+              query={query}
+              onQuery={setQuery}
+              placeholder="Cari ekspedisi, layanan, nama asli…"
+              total={total}
+              totalAll={totalAll}
+              onReset={resetControls}
+              hasActive={hasActiveControls}
+            >
+              <ToolbarSelect
+                value={filters.service ?? ""}
+                onChange={(v) => setFilter("service", v)}
+                allLabel="Semua Layanan"
+                options={distinct("service").map((s) => ({ value: s, label: s }))}
+              />
+              <ToolbarSelect
+                value={filters.status ?? ""}
+                onChange={(v) => setFilter("status", v)}
+                allLabel="Semua Status"
+                options={["Aktif", "Perlu dicek"].map((s) => ({ value: s, label: s }))}
+              />
+              <ToolbarSelect
+                value={sort}
+                onChange={setSort}
+                allLabel="Urutan asli"
+                options={[
+                  { value: "orders:desc", label: "Pesanan terbanyak" },
+                  { value: "name:asc", label: "Ekspedisi A-Z" },
+                ]}
+              />
+            </TableToolbar>
+            {total === 0 && (
+              <p className="py-6 text-center text-sm font-medium text-slate-400">
+                Tidak ada data yang cocok dengan pencarian/filter.
+              </p>
+            )}
             <div className="max-h-[560px] overflow-auto">
               <table className="w-full min-w-[640px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">

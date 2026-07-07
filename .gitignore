@@ -13,3 +13,9 @@ logs
 Thumbs.db
 *.log
 *.tsbuildinfo
+
+# Data migrasi (berisi data bisnis mentah: No HP, alamat, dll) - jangan commit
+data_migrasi/raw/
+data_migrasi/output/
+apps/web/public/data/
+scratch_browser/

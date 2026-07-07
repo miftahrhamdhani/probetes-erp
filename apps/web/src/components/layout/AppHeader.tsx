@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Bell, ChevronDown, Search } from "lucide-react";
 import { ProbetesLogo } from "@/components/ui/ProbetesLogo";
 
@@ -5,7 +6,9 @@ export function AppHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-[#e5e7eb] bg-[#f6f7f9]/96 shadow-[0_6px_18px_rgba(15,23,42,0.035)] backdrop-blur">
       <div className="mx-auto flex h-[84px] w-full max-w-[1680px] items-center justify-between gap-4 px-5 sm:px-7 lg:px-10">
-        <ProbetesLogo textSize="md" variant="header" />
+        <Link href="/" className="rounded-xl transition hover:opacity-85 focus:outline-none focus:ring-4 focus:ring-brand-red/10" aria-label="Kembali ke Home Launcher">
+          <ProbetesLogo textSize="md" variant="header" />
+        </Link>
 
         <div className="hidden flex-1 justify-center px-3 md:flex">
           <label className="relative w-full max-w-[460px]">

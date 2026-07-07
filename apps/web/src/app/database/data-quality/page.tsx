@@ -1,4 +1,5 @@
 import { AppHeader } from "@/components/layout/AppHeader";
+import { DatabaseBackButton } from "@/features/database/components/DatabaseBackButton";
 
 export default function DataQualityPage() {
   return (
@@ -18,6 +19,7 @@ export default function DataQualityPage() {
             Halaman ini akan dikembangkan pada tahap berikutnya.
           </p>
         </div>
+        <DatabaseBackButton />
       </main>
       <footer className="pb-7 pt-3 text-center text-xs font-medium text-slate-500 sm:text-sm">
         © 2026 Probetes ERP. All rights reserved.

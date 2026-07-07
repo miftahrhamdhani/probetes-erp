@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { DatabaseBackButton } from "@/features/database/components/DatabaseBackButton";
 import { overviewMenus } from "./config/overviewMenus";
 import { OverviewContent } from "./components/OverviewContent";
 import { OverviewMenuGrid } from "./components/OverviewMenuGrid";
@@ -22,6 +23,7 @@ export function DatabaseOverviewPage() {
         </div>
         <OverviewMenuGrid menus={overviewMenus} activeId={activeOverviewSection} onSelect={setActiveOverviewSection} />
         <OverviewContent activeId={activeOverviewSection} />
+        <DatabaseBackButton />
       </main>
       <footer className="pb-7 pt-3 text-center text-xs font-medium text-slate-500 sm:text-sm">
         © 2026 Probetes ERP. All rights reserved.

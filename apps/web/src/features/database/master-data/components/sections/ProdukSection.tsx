@@ -6,6 +6,7 @@ import { StatusBadge } from "@/features/database/overview/components/StatusBadge
 import { usePagedData } from "../../hooks/usePagedData";
 import { formatNumber, formatRupiah } from "../../lib/format";
 import { TablePagination } from "../TablePagination";
+import { TableToolbar, ToolbarSelect } from "../TableToolbar";
 
 interface ProductRow {
   id: string;
@@ -32,8 +33,10 @@ const notes = [
 ];
 
 export function ProdukSection() {
-  const { rows, total, loading, error, page, setPage, pageSize, setPageSize, totalPages } =
-    usePagedData<ProductRow>("/data/products.json");
+  const {
+    rows, total, totalAll, loading, error, page, setPage, pageSize, setPageSize, totalPages,
+    query, setQuery, filters, setFilter, sort, setSort, resetControls, hasActiveControls,
+  } = usePagedData<ProductRow>("/data/products.json", ["id", "name", "sku", "original"]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -52,6 +55,37 @@ export function ProdukSection() {
         )}
         {!loading && !error && (
           <>
+            <TableToolbar
+              query={query}
+              onQuery={setQuery}
+              placeholder="Cari ID, produk, SKU, nama asli…"
+              total={total}
+              totalAll={totalAll}
+              onReset={resetControls}
+              hasActive={hasActiveControls}
+            >
+              <ToolbarSelect
+                value={filters.status ?? ""}
+                onChange={(v) => setFilter("status", v)}
+                allLabel="Semua Status"
+                options={["Tersedia", "Perlu dicek"].map((s) => ({ value: s, label: s }))}
+              />
+              <ToolbarSelect
+                value={sort}
+                onChange={setSort}
+                allLabel="Urutan asli"
+                options={[
+                  { value: "value:desc", label: "Nilai terbesar" },
+                  { value: "qty:desc", label: "Qty terbanyak" },
+                  { value: "name:asc", label: "Produk A-Z" },
+                ]}
+              />
+            </TableToolbar>
+            {total === 0 && (
+              <p className="py-6 text-center text-sm font-medium text-slate-400">
+                Tidak ada data yang cocok dengan pencarian/filter.
+              </p>
+            )}
             <div className="max-h-[560px] overflow-auto">
               <table className="w-full min-w-[720px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">

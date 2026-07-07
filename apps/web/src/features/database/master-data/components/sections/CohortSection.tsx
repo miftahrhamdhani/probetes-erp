@@ -7,6 +7,7 @@ import type { StatusTone } from "@/features/database/overview/types/databaseOver
 import { usePagedData } from "../../hooks/usePagedData";
 import { formatNumber, formatRupiah } from "../../lib/format";
 import { TablePagination } from "../TablePagination";
+import { TableToolbar, ToolbarSelect } from "../TableToolbar";
 
 interface CohortSummaryRow {
   wa: string;
@@ -14,6 +15,7 @@ interface CohortSummaryRow {
   cohort: string;
   first: string;
   last: string;
+  freq: number;
   qty: number;
   total: number;
   cluster: string;
@@ -21,6 +23,7 @@ interface CohortSummaryRow {
 
 interface CohortTxRow {
   date: string;
+  trx: string;
   wa: string;
   name: string;
   cs: string;
@@ -31,10 +34,10 @@ interface CohortTxRow {
 }
 
 const kpiItems = [
-  { label: "Transaksi Tercatat", value: "20.332", detail: "Data cohort", tone: "blue" as const },
-  { label: "Pelanggan Terdata", value: "21.304", detail: "Punya riwayat", tone: "slate" as const },
-  { label: "Pelanggan Repeat", value: "6.972", detail: "Beli ulang", tone: "green" as const },
-  { label: "Bernilai Tinggi", value: "118", detail: "High Value", tone: "green" as const },
+  { label: "Transaksi Tercatat", value: "18.215", detail: "Setelah digabung", tone: "blue" as const },
+  { label: "Pelanggan Terdata", value: "21.603", detail: "Punya riwayat", tone: "slate" as const },
+  { label: "Pelanggan Repeat", value: "4.428", detail: "Beli ulang", tone: "green" as const },
+  { label: "Bernilai Tinggi", value: "63", detail: "High Value", tone: "green" as const },
 ];
 
 const clusterTone: Record<string, StatusTone> = {
@@ -46,13 +49,14 @@ const clusterTone: Record<string, StatusTone> = {
 
 const notes = [
   "No. WA dipakai sebagai ID pelanggan cohort, sesuai data asli (kolom User ID di data lama adalah nomor WA).",
-  "Database Cohort menjawab: pelanggan ini baru atau lama, pertama dan terakhir beli kapan, serta total belanjanya berapa.",
+  "Belanja beberapa produk sekali checkout = 1 transaksi — baris dengan ID Transaksi sama adalah satu belanjaan.",
+  "Frekuensi Trx = berapa kali pelanggan belanja (bukan jumlah barang; jumlah barang ada di Total Qty).",
   "Cluster membantu CS menentukan siapa yang perlu di-follow-up atau diarahkan ke konsultasi WA grup.",
 ];
 
 export function CohortSection() {
-  const summary = usePagedData<CohortSummaryRow>("/data/cohort_summary.json");
-  const riwayat = usePagedData<CohortTxRow>("/data/cohort_riwayat.json");
+  const summary = usePagedData<CohortSummaryRow>("/data/cohort_summary.json", ["wa", "name"]);
+  const riwayat = usePagedData<CohortTxRow>("/data/cohort_riwayat.json", ["wa", "name", "product", "trx"]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -71,6 +75,38 @@ export function CohortSection() {
         )}
         {!summary.loading && !summary.error && (
           <>
+            <TableToolbar
+              query={summary.query}
+              onQuery={summary.setQuery}
+              placeholder="Cari nama atau No. WA…"
+              total={summary.total}
+              totalAll={summary.totalAll}
+              onReset={summary.resetControls}
+              hasActive={summary.hasActiveControls}
+            >
+              <ToolbarSelect
+                value={summary.filters.cluster ?? ""}
+                onChange={(v) => summary.setFilter("cluster", v)}
+                allLabel="Semua Cluster"
+                options={["Baru", "Repeat", "High Value"].map((s) => ({ value: s, label: s }))}
+              />
+              <ToolbarSelect
+                value={summary.sort}
+                onChange={summary.setSort}
+                allLabel="Urutan asli"
+                options={[
+                  { value: "total:desc", label: "Total beli terbesar" },
+                  { value: "freq:desc", label: "Frekuensi terbanyak" },
+                  { value: "last:desc", label: "Beli terakhir terbaru" },
+                  { value: "name:asc", label: "Nama A-Z" },
+                ]}
+              />
+            </TableToolbar>
+            {summary.total === 0 && (
+              <p className="py-6 text-center text-sm font-medium text-slate-400">
+                Tidak ada data yang cocok dengan pencarian/filter.
+              </p>
+            )}
             <div className="max-h-[560px] overflow-auto">
               <table className="w-full min-w-[760px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">
@@ -80,6 +116,7 @@ export function CohortSection() {
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Cohort</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Beli Awal</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Beli Akhir</th>
+                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Frekuensi Trx</th>
                     <th className="pb-3 pr-4 text-right font-bold text-slate-500">Total Qty</th>
                     <th className="pb-3 pr-4 text-right font-bold text-slate-500">Total Beli</th>
                     <th className="pb-3 text-right font-bold text-slate-500">Cluster</th>
@@ -93,6 +130,7 @@ export function CohortSection() {
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.cohort}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.first}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.last}</td>
+                      <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatNumber(row.freq)}x</td>
                       <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.qty)}</td>
                       <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatRupiah(row.total)}</td>
                       <td className="py-3 text-right">
@@ -124,12 +162,44 @@ export function CohortSection() {
         )}
         {!riwayat.loading && !riwayat.error && (
           <>
+            <TableToolbar
+              query={riwayat.query}
+              onQuery={riwayat.setQuery}
+              placeholder="Cari nama, No. WA, produk, ID transaksi…"
+              total={riwayat.total}
+              totalAll={riwayat.totalAll}
+              onReset={riwayat.resetControls}
+              hasActive={riwayat.hasActiveControls}
+            >
+              <ToolbarSelect
+                value={riwayat.filters.product ?? ""}
+                onChange={(v) => riwayat.setFilter("product", v)}
+                allLabel="Semua Produk"
+                options={riwayat.distinct("product").map((p) => ({ value: p, label: p }))}
+              />
+              <ToolbarSelect
+                value={riwayat.sort}
+                onChange={riwayat.setSort}
+                allLabel="Urutan asli"
+                options={[
+                  { value: "date:desc", label: "Tanggal terbaru" },
+                  { value: "date:asc", label: "Tanggal terlama" },
+                  { value: "total:desc", label: "Nilai terbesar" },
+                ]}
+              />
+            </TableToolbar>
+            {riwayat.total === 0 && (
+              <p className="py-6 text-center text-sm font-medium text-slate-400">
+                Tidak ada data yang cocok dengan pencarian/filter.
+              </p>
+            )}
             <div className="max-h-[560px] overflow-auto">
               <table className="w-full min-w-[760px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-slate-200">
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Tanggal</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">No. WA (ID)</th>
+                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">ID Transaksi</th>
+                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">No. WA</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Customer</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">CS</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Produk</th>
@@ -140,8 +210,9 @@ export function CohortSection() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {riwayat.rows.map((row, index) => (
-                    <tr key={`${row.date}-${row.wa}-${index}`}>
+                    <tr key={`${row.trx}-${index}`}>
                       <td className="py-3 pr-4 font-medium text-slate-500">{row.date}</td>
+                      <td className="py-3 pr-4 font-medium text-slate-500">{row.trx}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.wa}</td>
                       <td className="py-3 pr-4 font-semibold text-slate-950">{row.name}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.cs}</td>
