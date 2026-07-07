@@ -102,6 +102,10 @@ export function usePagedData<T extends object>(
     setSortState("");
     setPage(1);
   };
+  const updateRows = (updater: (rows: T[]) => T[]) => {
+    setAllRows((current) => (current ? updater(current) : current));
+    setPage(1);
+  };
   const hasActiveControls = Boolean(query || sort || Object.values(filters).some(Boolean));
 
   const distinct = (key: keyof T) => {
@@ -129,6 +133,7 @@ export function usePagedData<T extends object>(
     sort,
     setSort,
     resetControls,
+    updateRows,
     hasActiveControls,
     distinct,
   };

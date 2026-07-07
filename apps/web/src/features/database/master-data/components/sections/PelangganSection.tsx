@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { DataPanel } from "@/features/database/overview/components/DataPanel";
 import { KpiCard } from "@/features/database/overview/components/KpiCard";
 import { StatusBadge } from "@/features/database/overview/components/StatusBadge";
 import type { StatusTone } from "@/features/database/overview/types/databaseOverview.types";
 import { usePagedData } from "../../hooks/usePagedData";
 import { formatNumber } from "../../lib/format";
+import { EditRecordModal, type EditField } from "../EditRecordModal";
 import { TablePagination } from "../TablePagination";
 import { TableToolbar, ToolbarSelect } from "../TableToolbar";
 
@@ -49,11 +51,32 @@ const notes = [
   "Jumlah transaksi dihitung per belanja: beli beberapa produk sekali checkout = 1 transaksi.",
 ];
 
+const editFields: EditField<CustomerRow>[] = [
+  { key: "id", label: "ID", readOnly: true },
+  { key: "name", label: "Nama" },
+  { key: "phone", label: "No. HP" },
+  { key: "city", label: "Kota" },
+  { key: "province", label: "Provinsi" },
+  { key: "source", label: "Asal Data" },
+  { key: "trx", label: "Transaksi", type: "number" },
+  { key: "status", label: "Status" },
+];
+
 export function PelangganSection() {
+  const [editingRow, setEditingRow] = useState<CustomerRow | null>(null);
   const {
     rows, total, totalAll, loading, error, page, setPage, pageSize, setPageSize, totalPages,
-    query, setQuery, filters, setFilter, sort, setSort, resetControls, hasActiveControls, distinct,
+    query, setQuery, filters, setFilter, sort, setSort, resetControls, updateRows, hasActiveControls, distinct,
   } = usePagedData<CustomerRow>("/data/customers.json", ["id", "name", "phone", "city", "province"]);
+
+  const saveRow = (updated: CustomerRow) => {
+    updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+    setEditingRow(null);
+  };
+  const deleteRow = (id: string) => {
+    if (!window.confirm("Hapus data pelanggan ini dari tampilan sementara?")) return;
+    updateRows((current) => current.filter((row) => row.id !== id));
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -109,7 +132,7 @@ export function PelangganSection() {
               </p>
             )}
             <div className="max-h-[560px] overflow-auto">
-              <table className="w-full min-w-[680px] text-sm">
+              <table className="w-full min-w-[820px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-slate-200">
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">ID</th>
@@ -119,7 +142,8 @@ export function PelangganSection() {
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Provinsi</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Asal Data</th>
                     <th className="pb-3 pr-4 text-right font-bold text-slate-500">Transaksi</th>
-                    <th className="pb-3 text-right font-bold text-slate-500">Status</th>
+                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Status</th>
+                    <th className="pb-3 text-right font-bold text-slate-500">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -132,8 +156,14 @@ export function PelangganSection() {
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.province}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.source}</td>
                       <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.trx)}</td>
-                      <td className="py-3 text-right">
+                      <td className="py-3 pr-4 text-right">
                         <StatusBadge label={row.status} tone={statusTone[row.status]} />
+                      </td>
+                      <td className="py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => setEditingRow(row)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600 hover:border-brand-red/40 hover:text-brand-red">Edit</button>
+                          <button type="button" onClick={() => deleteRow(row.id)} className="rounded-lg border border-red-100 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50">Hapus</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -175,6 +205,16 @@ export function PelangganSection() {
           </ul>
         </DataPanel>
       </div>
+
+      {editingRow && (
+        <EditRecordModal
+          title="Edit Pelanggan"
+          record={editingRow}
+          fields={editFields}
+          onClose={() => setEditingRow(null)}
+          onSave={saveRow}
+        />
+      )}
     </div>
   );
 }

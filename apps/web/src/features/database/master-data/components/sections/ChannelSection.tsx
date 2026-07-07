@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { DataPanel } from "@/features/database/overview/components/DataPanel";
 import { KpiCard } from "@/features/database/overview/components/KpiCard";
 import { StatusBadge } from "@/features/database/overview/components/StatusBadge";
 import { usePagedData } from "../../hooks/usePagedData";
 import { formatNumber, formatRupiah } from "../../lib/format";
+import { EditRecordModal, type EditField } from "../EditRecordModal";
 import { TablePagination } from "../TablePagination";
 import { TableToolbar, ToolbarSelect } from "../TableToolbar";
 
@@ -48,9 +50,47 @@ const notes = [
   "Mitra (UP DM, JAWARA, dll.) dicatat pada tabel sendiri, bukan dicampur ke channel.",
 ];
 
+const channelEditFields: EditField<ChannelRow>[] = [
+  { key: "id", label: "ID", readOnly: true },
+  { key: "name", label: "Channel" },
+  { key: "type", label: "Jenis" },
+  { key: "original", label: "Nama Asli" },
+  { key: "orders", label: "Pesanan", type: "number" },
+  { key: "value", label: "Nilai", type: "number" },
+  { key: "status", label: "Status" },
+];
+
+const mitraEditFields: EditField<MitraRow>[] = [
+  { key: "id", label: "ID", readOnly: true },
+  { key: "name", label: "Mitra" },
+  { key: "original", label: "Nama Asli" },
+  { key: "orders", label: "Pesanan", type: "number" },
+  { key: "value", label: "Nilai", type: "number" },
+  { key: "status", label: "Status" },
+];
+
 export function ChannelSection() {
+  const [editingChannel, setEditingChannel] = useState<ChannelRow | null>(null);
+  const [editingMitra, setEditingMitra] = useState<MitraRow | null>(null);
   const channels = usePagedData<ChannelRow>("/data/channels.json", ["id", "name", "type", "original"]);
   const mitra = usePagedData<MitraRow>("/data/mitra.json", ["id", "name", "original"]);
+
+  const saveChannel = (updated: ChannelRow) => {
+    channels.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+    setEditingChannel(null);
+  };
+  const deleteChannel = (id: string) => {
+    if (!window.confirm("Hapus data channel ini dari tampilan sementara?")) return;
+    channels.updateRows((current) => current.filter((row) => row.id !== id));
+  };
+  const saveMitra = (updated: MitraRow) => {
+    mitra.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+    setEditingMitra(null);
+  };
+  const deleteMitra = (id: string) => {
+    if (!window.confirm("Hapus data mitra ini dari tampilan sementara?")) return;
+    mitra.updateRows((current) => current.filter((row) => row.id !== id));
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -107,7 +147,7 @@ export function ChannelSection() {
               </p>
             )}
             <div className="max-h-[560px] overflow-auto">
-              <table className="w-full min-w-[680px] text-sm">
+              <table className="w-full min-w-[820px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-slate-200">
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">ID</th>
@@ -116,7 +156,8 @@ export function ChannelSection() {
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Nama Asli</th>
                     <th className="pb-3 pr-4 text-right font-bold text-slate-500">Pesanan</th>
                     <th className="pb-3 pr-4 text-right font-bold text-slate-500">Nilai</th>
-                    <th className="pb-3 text-right font-bold text-slate-500">Status</th>
+                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Status</th>
+                    <th className="pb-3 text-right font-bold text-slate-500">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -128,8 +169,14 @@ export function ChannelSection() {
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.original}</td>
                       <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.orders)}</td>
                       <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatRupiah(row.value)}</td>
-                      <td className="py-3 text-right">
+                      <td className="py-3 pr-4 text-right">
                         <StatusBadge label={row.status} />
+                      </td>
+                      <td className="py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => setEditingChannel(row)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600 hover:border-brand-red/40 hover:text-brand-red">Edit</button>
+                          <button type="button" onClick={() => deleteChannel(row.id)} className="rounded-lg border border-red-100 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50">Hapus</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -190,7 +237,7 @@ export function ChannelSection() {
                 </p>
               )}
               <div className="max-h-[420px] overflow-auto">
-                <table className="w-full min-w-[560px] text-sm">
+                <table className="w-full min-w-[700px] text-sm">
                   <thead className="sticky top-0 z-10 bg-white">
                     <tr className="border-b border-slate-200">
                       <th className="pb-3 pr-4 text-left font-bold text-slate-500">ID</th>
@@ -198,7 +245,8 @@ export function ChannelSection() {
                       <th className="pb-3 pr-4 text-left font-bold text-slate-500">Nama Asli</th>
                       <th className="pb-3 pr-4 text-right font-bold text-slate-500">Pesanan</th>
                       <th className="pb-3 pr-4 text-right font-bold text-slate-500">Nilai</th>
-                      <th className="pb-3 text-right font-bold text-slate-500">Status</th>
+                      <th className="pb-3 pr-4 text-right font-bold text-slate-500">Status</th>
+                      <th className="pb-3 text-right font-bold text-slate-500">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -209,8 +257,14 @@ export function ChannelSection() {
                         <td className="py-3 pr-4 font-medium text-slate-600">{row.original}</td>
                         <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.orders)}</td>
                         <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatRupiah(row.value)}</td>
-                        <td className="py-3 text-right">
+                        <td className="py-3 pr-4 text-right">
                           <StatusBadge label={row.status} />
+                        </td>
+                        <td className="py-3 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button type="button" onClick={() => setEditingMitra(row)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600 hover:border-brand-red/40 hover:text-brand-red">Edit</button>
+                            <button type="button" onClick={() => deleteMitra(row.id)} className="rounded-lg border border-red-100 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50">Hapus</button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -251,6 +305,25 @@ export function ChannelSection() {
           ))}
         </ul>
       </DataPanel>
+
+      {editingChannel && (
+        <EditRecordModal
+          title="Edit Channel"
+          record={editingChannel}
+          fields={channelEditFields}
+          onClose={() => setEditingChannel(null)}
+          onSave={saveChannel}
+        />
+      )}
+      {editingMitra && (
+        <EditRecordModal
+          title="Edit Mitra"
+          record={editingMitra}
+          fields={mitraEditFields}
+          onClose={() => setEditingMitra(null)}
+          onSave={saveMitra}
+        />
+      )}
     </div>
   );
 }

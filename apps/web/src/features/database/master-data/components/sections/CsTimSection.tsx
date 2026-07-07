@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { DataPanel } from "@/features/database/overview/components/DataPanel";
 import { KpiCard } from "@/features/database/overview/components/KpiCard";
 import { StatusBadge } from "@/features/database/overview/components/StatusBadge";
 import type { StatusTone } from "@/features/database/overview/types/databaseOverview.types";
 import { usePagedData } from "../../hooks/usePagedData";
 import { formatNumber } from "../../lib/format";
+import { EditRecordModal, type EditField } from "../EditRecordModal";
 import { TablePagination } from "../TablePagination";
 import { TableToolbar, ToolbarSelect } from "../TableToolbar";
 
@@ -46,9 +48,28 @@ const notes = [
   "Nama toko, affiliate, dan penanda dikeluarkan dari daftar tim sesuai keputusan owner.",
 ];
 
+const editFields: EditField<UserRow>[] = [
+  { key: "id", label: "ID", readOnly: true },
+  { key: "name", label: "Nama" },
+  { key: "role", label: "Role" },
+  { key: "divisi", label: "Divisi" },
+  { key: "orders", label: "Pesanan", type: "number" },
+  { key: "status", label: "Status" },
+];
+
 export function CsTimSection() {
+  const [editingRow, setEditingRow] = useState<UserRow | null>(null);
   const users = usePagedData<UserRow>("/data/users.json", ["id", "name", "role", "divisi"]);
   const sumberLain = usePagedData<SumberLainRow>("/data/sumber_lain.json", ["name", "jenis"]);
+
+  const saveRow = (updated: UserRow) => {
+    users.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+    setEditingRow(null);
+  };
+  const deleteRow = (id: string) => {
+    if (!window.confirm("Hapus data CS / Tim ini dari tampilan sementara?")) return;
+    users.updateRows((current) => current.filter((row) => row.id !== id));
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -104,7 +125,7 @@ export function CsTimSection() {
               </p>
             )}
             <div className="max-h-[560px] overflow-auto">
-              <table className="w-full min-w-[600px] text-sm">
+              <table className="w-full min-w-[740px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-slate-200">
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">ID</th>
@@ -112,7 +133,8 @@ export function CsTimSection() {
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Role</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Divisi</th>
                     <th className="pb-3 pr-4 text-right font-bold text-slate-500">Pesanan</th>
-                    <th className="pb-3 text-right font-bold text-slate-500">Status</th>
+                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Status</th>
+                    <th className="pb-3 text-right font-bold text-slate-500">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -123,8 +145,14 @@ export function CsTimSection() {
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.role}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.divisi}</td>
                       <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.orders)}</td>
-                      <td className="py-3 text-right">
+                      <td className="py-3 pr-4 text-right">
                         <StatusBadge label={row.status} />
+                      </td>
+                      <td className="py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => setEditingRow(row)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600 hover:border-brand-red/40 hover:text-brand-red">Edit</button>
+                          <button type="button" onClick={() => deleteRow(row.id)} className="rounded-lg border border-red-100 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50">Hapus</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -228,6 +256,16 @@ export function CsTimSection() {
           </ul>
         </DataPanel>
       </div>
+
+      {editingRow && (
+        <EditRecordModal
+          title="Edit CS / Tim"
+          record={editingRow}
+          fields={editFields}
+          onClose={() => setEditingRow(null)}
+          onSave={saveRow}
+        />
+      )}
     </div>
   );
 }
