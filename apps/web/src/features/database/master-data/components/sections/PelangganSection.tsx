@@ -8,6 +8,7 @@ import type { StatusTone } from "@/features/database/overview/types/databaseOver
 import { usePagedData } from "../../hooks/usePagedData";
 import { useRowVirtualizer } from "../../hooks/useRowVirtualizer";
 import { formatNumber } from "../../lib/format";
+import { DetailRecordModal } from "../DetailRecordModal";
 import { EditRecordModal, type EditField } from "../EditRecordModal";
 import { TablePagination } from "../TablePagination";
 import { DateRangeFilter, TableToolbar, ToolbarSelect } from "../TableToolbar";
@@ -16,6 +17,7 @@ interface CustomerRow {
   id: string;
   name: string;
   phone: string;
+  address: string;
   city: string;
   province: string;
   source: string;
@@ -68,6 +70,7 @@ const editFields: EditField<CustomerRow>[] = [
 
 export function PelangganSection() {
   const [editingRow, setEditingRow] = useState<CustomerRow | null>(null);
+  const [detailRow, setDetailRow] = useState<CustomerRow | null>(null);
   const {
     rows, total, totalAll, loading, error, page, setPage, pageSize, setPageSize, totalPages,
     query, setQuery, filters, setFilter, dateFrom, setDateFrom, dateTo, setDateTo,
@@ -187,6 +190,7 @@ export function PelangganSection() {
                       </td>
                       <td className="py-3 text-right">
                         <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => setDetailRow(row)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600 hover:border-brand-red/40 hover:text-brand-red">Lihat</button>
                           <button type="button" onClick={() => setEditingRow(row)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600 hover:border-brand-red/40 hover:text-brand-red">Edit</button>
                           <button type="button" onClick={() => deleteRow(row.id)} className="rounded-lg border border-red-100 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50">Hapus</button>
                         </div>
@@ -236,6 +240,26 @@ export function PelangganSection() {
           </ul>
         </DataPanel>
       </div>
+
+      {detailRow && (
+        <DetailRecordModal
+          title="Detail Pelanggan"
+          subtitle="Informasi lengkap pelanggan dari database ERP."
+          fields={[
+            { label: "Tanggal", value: detailRow.firstPurchase },
+            { label: "ID Customer", value: detailRow.id },
+            { label: "Nama", value: detailRow.name },
+            { label: "No. HP", value: detailRow.phone },
+            { label: "Alamat Lengkap", value: detailRow.address },
+            { label: "Kota", value: detailRow.city },
+            { label: "Provinsi", value: detailRow.province },
+            { label: "Channel Utama", value: detailRow.source },
+            { label: "Frekuensi Transaksi", value: `${formatNumber(detailRow.trx)}x` },
+            { label: "Status", value: detailRow.status },
+          ]}
+          onClose={() => setDetailRow(null)}
+        />
+      )}
 
       {editingRow && (
         <EditRecordModal

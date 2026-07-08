@@ -33,6 +33,7 @@ INT = "int"
 BIG = "big"
 DATE = "date"
 TXT = "txt"
+BOOL = "bool"
 
 
 def col(t):
@@ -45,10 +46,11 @@ TABLES = [
         ("customer_id", TXT), ("name", TXT), ("phone", TXT), ("phone_normalized", TXT),
         ("address", TXT), ("city", TXT), ("province", TXT), ("source_origin", TXT),
         ("channel_id", TXT), ("cs_id", TXT), ("transaction_count", INT), ("status", TXT),
+        ("is_crm_target", BOOL), ("in_wa_group", BOOL),
     ]),
     ("master.products", "master/products.csv", [
         ("product_id", TXT), ("product_final_name", TXT), ("sku", TXT), ("original_names", TXT),
-        ("category", TXT), ("qty_total", BIG), ("value_total", BIG), ("status", TXT),
+        ("category", TXT), ("product_line", TXT), ("qty_total", BIG), ("value_total", BIG), ("status", TXT),
     ]),
     ("master.channels", "master/channels.csv", [
         ("channel_id", TXT), ("channel_final_name", TXT), ("type", TXT), ("original_names", TXT),
@@ -73,6 +75,8 @@ TABLES = [
         ("customer_id", TXT), ("cohort_month", TXT), ("first_purchase_date", DATE),
         ("last_purchase_date", DATE), ("frequency", INT), ("total_qty", BIG),
         ("total_spent", BIG), ("last_product_id", TXT), ("last_cs_id", TXT), ("cluster", TXT),
+        ("recency_days", INT), ("r_score", INT), ("f_score", INT), ("m_score", INT),
+        ("rfm_segment", TXT),
     ]),
     ("orders.orders", "orders/orders.csv", [
         ("order_id", TXT), ("customer_id", TXT), ("order_date", DATE), ("channel_id", TXT),
@@ -149,6 +153,13 @@ def conv(val, typ, valid_set):
             return int(float(val))
         except (ValueError, TypeError):
             return None
+    if typ == BOOL:
+        s = str(val).strip().lower()
+        if s in ("true", "1", "ya", "t"):
+            return True
+        if s in ("false", "0", "tidak", "f"):
+            return False
+        return None
     if typ == DATE:
         return val  # sudah format YYYY-MM-DD; psycopg2 cast otomatis, kosong->None
     if valid_set is not None and val not in valid_set:

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { extractCityFromAddress } from "@/lib/location";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,8 @@ const SQL = `
       WHEN cu.phone_normalized LIKE '62%' THEN '0' || substring(cu.phone_normalized from 3)
       ELSE cu.phone_normalized
     END AS phone,
-    COALESCE(NULLIF(cu.city, ''), '-') AS city,
+    COALESCE(NULLIF(cu.address, ''), '-') AS address,
+    COALESCE(NULLIF(cu.city, ''), '') AS city,
     COALESCE(NULLIF(cu.province, ''), '-') AS province,
     CASE
       WHEN ch.channel_final_name IS NULL THEN '-'
@@ -57,8 +59,11 @@ const SQL = `
 
 export async function GET() {
   try {
-    const rows = await query(SQL);
-    return NextResponse.json(rows);
+    const rows = await query<Array<Record<string, unknown>>[number]>(SQL);
+    return NextResponse.json(rows.map((row) => ({
+      ...row,
+      city: extractCityFromAddress(String(row.address ?? ""), String(row.city ?? "")) || "-",
+    })));
   } catch (err) {
     console.error("GET /api/master/customers gagal:", err);
     return NextResponse.json({ error: "Gagal memuat data pelanggan." }, { status: 500 });

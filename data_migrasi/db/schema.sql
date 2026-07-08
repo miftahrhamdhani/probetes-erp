@@ -27,7 +27,9 @@ CREATE TABLE master.customers (
     channel_id         TEXT,
     cs_id              TEXT,
     transaction_count  INTEGER DEFAULT 0,
-    status             TEXT
+    status             TEXT,
+    is_crm_target      BOOLEAN,        -- true = punya No HP valid, layak broadcast WA
+    in_wa_group        BOOLEAN         -- true/false dari daftar grup WA; NULL = belum diketahui
 );
 
 CREATE TABLE master.products (
@@ -35,7 +37,8 @@ CREATE TABLE master.products (
     product_final_name  TEXT,
     sku                 TEXT,
     original_names      TEXT,
-    category            TEXT,
+    category            TEXT,          -- digital / hp_amandia / fisik_lain (untuk RFM/cluster)
+    product_line        TEXT,          -- probetes / ksb (pisah retensi KSB)
     qty_total           BIGINT DEFAULT 0,
     value_total         BIGINT DEFAULT 0,
     status              TEXT
@@ -100,7 +103,12 @@ CREATE TABLE master.customer_cohorts (
     total_spent          BIGINT DEFAULT 0,
     last_product_id      TEXT REFERENCES master.products(product_id),
     last_cs_id           TEXT REFERENCES master.users(user_id),
-    cluster              TEXT
+    cluster              TEXT,
+    recency_days         INTEGER,       -- jarak hari dari transaksi terbaru (acuan R)
+    r_score              INTEGER,       -- skor Recency 1..5 (0 = bukan target CRM)
+    f_score              INTEGER,       -- skor Frequency 1..5
+    m_score              INTEGER,       -- skor Monetary 1..5
+    rfm_segment          TEXT           -- Champions / Loyal / ... / Non-CRM
 );
 
 -- ---------------------------------------------------------------------------

@@ -71,6 +71,11 @@ def normalize_phone(raw):
         reason = "phone_terlalu_pendek"
     return d, reason
 
+def is_valid_wa_phone(phone_norm):
+    """No HP layak jadi target CRM (bisa di-broadcast WA): diawali 62, panjang 10-15."""
+    d = phone_norm or ""
+    return d.startswith("62") and 10 <= len(d) <= 15
+
 def parse_int(raw):
     """Angka rupiah: '139.000' / '84,650' -> 139000 / 84650. '' -> None."""
     if raw is None:
@@ -137,6 +142,74 @@ _PROV_RE = re.compile(
 def extract_province(text):
     m = _PROV_RE.search(text or "")
     return _PROV_VARIANTS.get(m.group(0).upper(), "") if m else ""
+
+_PROV_ABBR = ("jateng", "jatim", "jabar", "jakarta", "diy", "jogja", "sumut",
+              "sumbar", "sumsel", "kalbar", "kalteng", "kalsel", "kaltim",
+              "kaltara", "sulsel", "sulut", "sulteng", "sultra", "sulbar",
+              "ntb", "ntt", "babel", "kepri", "banten", "bali", "aceh",
+              "riau", "jambi", "lampung", "bengkulu", "gorontalo", "papua",
+              "maluku")
+
+def title_city(value):
+    words = [w for w in clean_text(value).split() if w.lower() not in _PROV_ABBR]
+    return " ".join(w.capitalize() for w in words)
+
+_BAD_CITY = {"selatan", "utara", "barat", "timur", "pusat", "tengah",
+             "raya", "baru", "lama", "indah", "permai"}
+
+def _clean_city_result(city):
+    """Tolak hasil kota yang jelas bukan nama kota (arah/kata umum)."""
+    c = clean_text(city)
+    if not c or c.lower() in _BAD_CITY or len(c) < 3:
+        return ""
+    return c
+
+def extract_city(address, fallback=""):
+    """Isi kota dari kolom Kota/Kabupaten; jika kosong, ambil dari pola jelas di Alamat."""
+    fb = clean_text(fallback)
+    if fb:
+        return title_city(re.sub(r"\b(kota|kab\.?|kabupaten)\b", "", fb, flags=re.I))
+    text = clean_text(address)
+    if not text:
+        return ""
+    m = re.search(r"(?:kabupaten\s*/\s*kota|kab\.?|kabupaten|kota)\s*[:\-]?\s*([A-Za-z.'\s]{3,45})", text, re.I)
+    if m:
+        city = re.split(r",|\b(provinsi|jawa|sumatera|sumatra|sulawesi|kalimantan|bali|banten|ntb|nusa|maluku|papua|lampung|jambi|riau|aceh)\b", m.group(1), flags=re.I)[0]
+        city = re.sub(r"\b(kota|kab\.?|kabupaten|kecamatan|kec\.?|kelurahan|kel\.?)\b", "", city, flags=re.I)
+        got = _clean_city_result(title_city(city))
+        if got:
+            return got
+    parts = [clean_text(p) for p in text.split(",") if clean_text(p)]
+    for i, part in enumerate(parts):
+        if extract_province(part) and i > 0:
+            candidate = re.sub(r"\b(kota|kab\.?|kabupaten|kecamatan|kec\.?)\b", "", parts[i - 1], flags=re.I)
+            w = candidate.split()
+            if w:
+                if w[-1].lower() in ("selatan", "utara", "barat", "timur", "pusat") and len(w) >= 2:
+                    candidate = w[-2] + " " + w[-1]
+                else:
+                    candidate = w[-1]
+            got = _clean_city_result(title_city(candidate))
+            if got:
+                return got
+    # Strategi 3: alamat tanpa koma. Cari provinsi di teks, ambil kata sebelum provinsi.
+    pm = _PROV_RE.search(text)
+    if pm:
+        before = text[:pm.start()].strip()
+        # buang penunjuk administratif di ekor, ambil 1 kata kota di depan provinsi
+        before = re.sub(r"\b(kec\.?|kecamatan|kel\.?|kelurahan|desa|rt|rw)\b.*$", "", before, flags=re.I).strip()
+        words = [w for w in before.split() if len(w) >= 3 and not w.isdigit()]
+        if words:
+            # "Jakarta Selatan" / "Tangerang Selatan": arah ikut nama kota di depannya.
+            if words[-1].lower() in ("selatan", "utara", "barat", "timur", "pusat") and len(words) >= 2:
+                cand = words[-2] + " " + words[-1]
+            else:
+                cand = words[-1]
+            if not re.match(r"^(jl|jln|jalan|gang|gg|blok|no|rt|rw)\b", cand, re.I):
+                got = _clean_city_result(title_city(cand))
+                if got:
+                    return got
+    return ""
 
 # ----------------------------------------------------------------------------
 # Mapping terkurasi (kurir, pembayaran, channel) + auto (produk, cs)
@@ -266,6 +339,38 @@ def map_product(raw):
         base = clean_text(re.sub(r"\s*\bBonus\b\s*", " ", base, flags=re.IGNORECASE))
     return base, status
 
+# KEPUTUSAN (Jul 2026): kategori & lini produk untuk kebutuhan RFM/Cohort.
+# category  : digital / hp_amandia / fisik_lain / ('' bila belum jelas -> review)
+# product_line : ksb (Yacona dkk) / probetes (selain KSB)
+# Pencocokan pakai kata kunci (case-insensitive) supaya varian nama ikut terdeteksi.
+_KSB_KEYS = ("yacona", "teacona", "bio insuleaf", "insuleaf", "zymuno",
+             "nutriflakes", "nutri flakes", "probiogel")
+_DIGITAL_KEYS = ("ebook", "e-book", "buku", "audiobook", "audio book",
+                 "webinar", "rekaman", "modul")
+_HP_AMANDIA_KEYS = ("herbal probetes", "probetes herbal", "pbh", "hp cod",
+                    "amandia")
+
+def _has_key(low, keys):
+    return any(k in low for k in keys)
+
+def classify_product_line(name):
+    return "ksb" if _has_key((name or "").lower(), _KSB_KEYS) else "probetes"
+
+def classify_product_category(name):
+    low = (name or "").lower()
+    if not low:
+        return ""
+    if _has_key(low, _DIGITAL_KEYS) or _has_key(low, ("meal plan", "konsul", "kelas", "menu")):
+        return "digital"
+    if _has_key(low, _HP_AMANDIA_KEYS) or re.search(r"\bhp\b", low) or "herbal" in low:
+        return "hp_amandia"
+    if _has_key(low, ("oil", "beras", "minyak", "vco", "cco", "stevia",
+                      "muesli", "museli", "topping", "amandia muesli")):
+        return "fisik_lain"
+    if _has_key(low, _KSB_KEYS):
+        return "fisik_lain"
+    return ""
+
 # ============================================================================
 # BACA SUMBER
 # ============================================================================
@@ -273,6 +378,28 @@ print("Membaca sumber...")
 r01 = read_csv("01_database_all.csv")
 r02 = read_csv("02_probetes_non_prodig.csv")
 r04 = read_csv("04_cohort_pelanggan.csv")
+
+# ---- Daftar "Masuk Grup WA" (opsional) --------------------------------------
+# Kalau file export dari sheet masukWA/tidakmasukWA sudah ada di raw/, dipakai untuk
+# mengisi flag in_wa_group. Kalau belum ada, flag dibiarkan '' (bisa diedit via CRUD).
+# Format file yang diharapkan: kolom pertama = No HP (boleh 08.. / 62..).
+def read_phone_set(name):
+    path = os.path.join(RAW, name)
+    if not os.path.exists(path):
+        return None
+    result = set()
+    for row in read_csv(name)[1:]:
+        if not row:
+            continue
+        pn, _ = normalize_phone(row[0])
+        if pn:
+            result.add(pn)
+    return result
+
+wa_masuk_set = read_phone_set("masukWA.csv")
+wa_tidak_set = read_phone_set("tidakmasukWA.csv")
+if wa_masuk_set is None:
+    print("Info: raw/masukWA.csv belum ada -> flag Grup WA dikosongkan (isi via CRUD).")
 
 h01, d01 = r01[0], r01[1:]
 h02, d02 = r02[0], r02[1:]
@@ -369,13 +496,14 @@ for get, row, src in order_src:
     customers.meta[cid]["count"] += 1
     cust_names[cid][name] += 1
     m = customers.meta[cid]
+    raw_address = clean_text(get(row, "Alamat"))
+    raw_city = clean_text(get(row, "Kota/Kabupaten"))
     if not m["city"]:
-        m["city"] = clean_text(get(row, "Kota/Kabupaten"))
+        m["city"] = extract_city(raw_address, raw_city)
     if not m["address"]:
-        m["address"] = clean_text(get(row, "Alamat"))
+        m["address"] = raw_address
     if not m["province"]:
-        m["province"] = extract_province(
-            clean_text(get(row, "Alamat")) + " " + clean_text(get(row, "Kota/Kabupaten")))
+        m["province"] = extract_province(raw_address + " " + raw_city)
 
 # file 04 tambahan customer (User ID = phone)
 h04 = r04[0]
@@ -423,7 +551,8 @@ map_prod, map_chan, map_cour, map_cs, map_mitra_tbl = {}, {}, {}, {}, {}
 
 # untuk cohort
 cust_agg = defaultdict(lambda: {"first": "", "last": "", "qty": 0, "spent": 0,
-                                "last_prod": "", "last_cs": "", "count": 0, "cohort": ""})
+                                "last_prod": "", "last_cs": "", "count": 0, "cohort": "",
+                                "channels": Counter(), "css": Counter()})
 
 # ---- KEPUTUSAN OWNER no.15: kelompokkan baris jadi transaksi multi-item ----
 # 1 transaksi = customer + tanggal (+ ID pesan sebagai penguat).
@@ -645,6 +774,10 @@ for gkey, grp in order_groups.items():
         a["count"] += 1
         a["qty"] += qty_sum
         a["spent"] += (total_amount or 0)
+        if chid:
+            a["channels"][chid] += 1   # channel dominan pelanggan (dari order)
+        if cs_id:
+            a["css"][cs_id] += 1        # CS dominan pelanggan (dari order)
         if date_ok:
             if not a["first"] or odate < a["first"]:
                 a["first"] = odate
@@ -747,9 +880,24 @@ for cid, m in customers.meta.items():
         status = "review"
     if m["reason"]:
         status = "review"
+    # Flag CRM: layak di-broadcast WA (punya No HP valid).
+    is_crm_target = "true" if is_valid_wa_phone(m["phone_norm"]) else "false"
+    # Channel & CS pelanggan diisi dari yang paling sering dipakai saat order.
+    ch_dom = (a.get("channels") or Counter()).most_common(1)
+    cs_dom = (a.get("css") or Counter()).most_common(1)
+    channel_id = m["channel_id"] or (ch_dom[0][0] if ch_dom else "")
+    cs_id_val = m["cs_id"] or (cs_dom[0][0] if cs_dom else "")
+    # Flag Grup WA: dari daftar masukWA/tidakmasukWA bila tersedia, else '' (isi via CRUD).
+    if wa_masuk_set is not None and m["phone_norm"] in wa_masuk_set:
+        in_wa_group = "true"
+    elif wa_tidak_set is not None and m["phone_norm"] in wa_tidak_set:
+        in_wa_group = "false"
+    else:
+        in_wa_group = ""
     cust_out.append([
         cid, name, m["phone_raw"], m["phone_norm"], m["address"], m["city"],
-        m.get("province", ""), m["source"], m["channel_id"], m["cs_id"], cnt, status,
+        m.get("province", ""), m["source"], channel_id, cs_id_val, cnt, status,
+        is_crm_target, in_wa_group,
     ])
     if m["reason"]:
         if m["reason"] == "no_phone":
@@ -761,24 +909,31 @@ for cid, m in customers.meta.items():
 write_csv(outpath("master", "customers.csv"),
           ["customer_id", "name", "phone", "phone_normalized", "address", "city",
            "province", "source_origin", "channel_id", "cs_id", "transaction_count",
-           "status"], cust_out)
+           "status", "is_crm_target", "in_wa_group"], cust_out)
 
 # ---- master.products ----
 prod_out = []
 for pid, m in prod_meta.items():
     sku = title_from_counter(m.get("sku", Counter()))
+    final_name = m.get("final", "")
+    category = classify_product_category(final_name)
+    product_line = classify_product_line(final_name)
     prod_out.append([
-        pid, m.get("final", ""), sku,
+        pid, final_name, sku,
         " / ".join([o for o, _ in m["orig"].most_common(6)]),
-        "", m["qty"], m["val"], m["status"],
+        category, product_line, m["qty"], m["val"], m["status"],
     ])
     if m["status"] == "review":
-        flag("Produk", f"{pid} {m.get('final','')}",
+        flag("Produk", f"{pid} {final_name}",
              "Nama produk bervariasi/prefiks/encoding", "review",
              "Mapping ke produk final", pid)
+    if not category:
+        flag("Produk", f"{pid} {final_name}",
+             "Kategori produk belum jelas", "review",
+             "Tentukan kategori: digital / hp_amandia / fisik_lain", pid)
 write_csv(outpath("master", "products.csv"),
           ["product_id", "product_final_name", "sku", "original_names",
-           "category", "qty_total", "value_total", "status"], prod_out)
+           "category", "product_line", "qty_total", "value_total", "status"], prod_out)
 
 # ---- master.channels ----
 # KEPUTUSAN OWNER no.13: channel Offline disiapkan -> Stokis (belum ada datanya di file lama)
@@ -840,20 +995,95 @@ src_out = [[sid, m["nama"], m["jenis"], m["orders"]] for sid, m in source_meta.i
 write_csv(outpath("master", "sumber_lain.csv"),
           ["source_id", "nama", "jenis", "order_count"], src_out)
 
-# ---- master.customer_cohorts ----
+# ---- master.customer_cohorts (+ skor RFM) ----
+# KEPUTUSAN (Jul 2026): RFM hanya untuk TARGET CRM (punya No HP valid), karena RFM
+# dipakai tim CRM untuk broadcast WA. Customer tanpa nomor tetap tercatat di cohort,
+# tapi skor RFM-nya kosong dan segmen = 'Non-CRM'.
+import datetime as _dt
+
+def _to_date(s):
+    try:
+        return _dt.date.fromisoformat(s) if s else None
+    except ValueError:
+        return None
+
+# Tanggal acuan recency = transaksi terbaru di seluruh data.
+_ref_date = None
+for a in cust_agg.values():
+    d = _to_date(a.get("last", ""))
+    if d and (_ref_date is None or d > _ref_date):
+        _ref_date = d
+if _ref_date is None:
+    _ref_date = _dt.date.today()
+
+def _recency_days(a):
+    d = _to_date(a.get("last", ""))
+    return (_ref_date - d).days if d else None
+
+# Kumpulkan hanya customer target CRM untuk basis kuintil skor.
+crm_ids = [cid for cid in cust_agg
+           if is_valid_wa_phone(customers.meta.get(cid, {}).get("phone_norm", ""))]
+
+def _quintile_scorer(values, reverse=False):
+    """Kembalikan fungsi nilai->skor 1..5 berdasarkan kuintil.
+    reverse=True: nilai kecil dapat skor besar (untuk Recency)."""
+    vals = sorted(v for v in values if v is not None)
+    if not vals:
+        return lambda v: 0
+    n = len(vals)
+    cuts = [vals[min(n - 1, int(n * k / 5))] for k in range(1, 5)]  # 4 batas -> 5 bin
+    def score(v):
+        if v is None:
+            return 0
+        s = 1
+        for c in cuts:
+            if v > c:
+                s += 1
+        return 5 - s + 1 if reverse else s
+    return score
+
+_r_score = _quintile_scorer([_recency_days(cust_agg[c]) for c in crm_ids], reverse=True)
+_f_score = _quintile_scorer([cust_agg[c]["count"] for c in crm_ids])
+_m_score = _quintile_scorer([cust_agg[c]["spent"] for c in crm_ids])
+
+def _rfm_segment(r, f, m):
+    if r >= 4 and f >= 4 and m >= 4:
+        return "Champions"
+    if f >= 4:
+        return "Loyal"
+    if m >= 4:
+        return "Big Spender"
+    if r >= 4 and f <= 2:
+        return "Pelanggan Baru"
+    if r >= 3:
+        return "Berpotensi"
+    if r <= 2 and (f >= 3 or m >= 3):
+        return "Berisiko Hilang"
+    return "Tidak Aktif"
+
 cohort_out = []
 for cid, a in cust_agg.items():
     cnt = a["count"]; spent = a["spent"]
     cluster = "high_value" if spent >= 5_000_000 else ("repeat" if cnt > 1 else "baru")
     cohort_month = a["cohort"] or (a["first"][:7] if a["first"] else "")
+    rec = _recency_days(a)
+    is_crm = is_valid_wa_phone(customers.meta.get(cid, {}).get("phone_norm", ""))
+    if is_crm:
+        r, f, m = _r_score(rec), _f_score(cnt), _m_score(spent)
+        seg = _rfm_segment(r, f, m)
+    else:
+        r = f = m = 0
+        seg = "Non-CRM"
     cohort_out.append([
         cid, cohort_month, a["first"], a["last"], cnt, a["qty"], spent,
         a["last_prod"], a["last_cs"], cluster,
+        rec if rec is not None else "", r, f, m, seg,
     ])
 write_csv(outpath("master", "customer_cohorts.csv"),
           ["customer_id", "cohort_month", "first_purchase_date", "last_purchase_date",
            "frequency", "total_qty", "total_spent", "last_product_id", "last_cs_id",
-           "cluster"], cohort_out)
+           "cluster", "recency_days", "r_score", "f_score", "m_score", "rfm_segment"],
+          cohort_out)
 
 # ---- orders ----
 write_csv(outpath("orders", "orders.csv"),
