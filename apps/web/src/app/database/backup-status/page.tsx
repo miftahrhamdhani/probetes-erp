@@ -149,15 +149,15 @@ export default function BackupStatusPage() {
         <div>
           <h1 className="text-3xl font-black tracking-[-0.045em] text-slate-950 sm:text-4xl">Status Cadangan</h1>
           <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-600 sm:text-base">
-            Simpan salinan seluruh data ERP ke folder di komputer ini, kapan saja atau terjadwal otomatis.
+            Simpan salinan data ERP ke file Excel, manual sekarang atau disiapkan untuk jadwal otomatis.
           </p>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-          <DataPanel title="Pengaturan Cadangan" subtitle="Atur jadwal otomatis dan folder tujuan penyimpanan.">
+          <DataPanel title="Pengaturan Cadangan" subtitle="Simpan pilihan jadwal dan folder tujuan. Jadwal aktif setelah dipasang ke Windows Task Scheduler atau cron VPS.">
             <div className="flex flex-col gap-4">
               <label className="flex flex-col gap-1.5">
-                <span className="text-sm font-bold text-slate-700">Jadwal Otomatis</span>
+                <span className="text-sm font-bold text-slate-700">Rencana Jadwal</span>
                 <select
                   value={scheduleDraft}
                   onChange={(e) => setScheduleDraft(e.target.value)}
@@ -202,7 +202,7 @@ export default function BackupStatusPage() {
               )}
               {settings && settings.schedule !== "manual" && (
                 <p className="rounded-xl bg-blue-50 p-3 text-xs font-semibold text-blue-800">
-                  Jadwal otomatis hanya berjalan bila komputer ini menyala dan Task Scheduler Windows sudah diatur. Lihat catatan di bawah.
+                  Jadwal sudah tersimpan. Agar berjalan sendiri, pasang pemicu jadwal di Windows Task Scheduler atau cron VPS.
                 </p>
               )}
             </div>
@@ -233,7 +233,7 @@ export default function BackupStatusPage() {
 
               {backupMode === "all" && (
                 <p className="text-sm font-medium leading-6 text-slate-600">
-                  Mengambil seluruh data pelanggan, pesanan, produk, channel, ekspedisi, cohort, tracking, dan finance dari database, lalu menyimpannya sebagai file CSV ke folder tujuan.
+                  Mengambil seluruh data pelanggan, pesanan, produk, channel, ekspedisi, cohort, tracking, dan finance dari database, lalu menyimpannya sebagai satu file Excel ke folder tujuan.
                 </p>
               )}
 
@@ -348,9 +348,9 @@ export default function BackupStatusPage() {
           )}
         </DataPanel>
 
-        <DataPanel title="Catatan Cadangan Otomatis">
+        <DataPanel title="Catatan Jadwal Otomatis">
           <p className="text-sm font-medium leading-6 text-slate-600">
-            Jadwal harian/mingguan/bulanan di atas hanya menyimpan pengaturan. Agar benar-benar berjalan sendiri tanpa membuka aplikasi ini, perlu didaftarkan sekali ke Task Scheduler Windows — panduannya ada di <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">data_migrasi/db/README_BACKUP.md</code>. Cadangan otomatis hanya berjalan bila komputer menyala saat jadwalnya tiba.
+            Pilihan harian/mingguan/bulanan di atas adalah rencana jadwal. Di komputer lokal, jadwal aktif setelah didaftarkan ke Task Scheduler Windows. Saat nanti pindah ke VPS, jadwal aktif setelah dipasang ke cron/server scheduler. Mesin backup-nya sudah siap; yang perlu dipasang nanti hanya pemicu waktunya.
           </p>
         </DataPanel>
 
