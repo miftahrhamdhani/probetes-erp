@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "turbo dev",
     "dev:web": "pnpm --filter @probetes/web dev",
+    "dev:web:clean": "pnpm --filter @probetes/web dev:clean",
     "dev:api": "pnpm --filter @probetes/api start:dev",
     "build": "turbo build",
     "build:web": "pnpm --filter @probetes/web build",
