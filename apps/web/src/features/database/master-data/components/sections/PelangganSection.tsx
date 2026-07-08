@@ -6,10 +6,11 @@ import { KpiCard } from "@/features/database/overview/components/KpiCard";
 import { StatusBadge } from "@/features/database/overview/components/StatusBadge";
 import type { StatusTone } from "@/features/database/overview/types/databaseOverview.types";
 import { usePagedData } from "../../hooks/usePagedData";
+import { useRowVirtualizer } from "../../hooks/useRowVirtualizer";
 import { formatNumber } from "../../lib/format";
 import { EditRecordModal, type EditField } from "../EditRecordModal";
 import { TablePagination } from "../TablePagination";
-import { TableToolbar, ToolbarSelect } from "../TableToolbar";
+import { DateRangeFilter, TableToolbar, ToolbarSelect } from "../TableToolbar";
 
 interface CustomerRow {
   id: string;
@@ -20,6 +21,7 @@ interface CustomerRow {
   source: string;
   trx: number;
   status: string;
+  firstPurchase: string;
 }
 
 const kpiItems = [
@@ -46,19 +48,21 @@ const legendItems = [
 const notes = [
   "Pelanggan dikenali dari No HP, bukan nama — nama boleh beda, No HP sama tetap dihitung satu pelanggan.",
   "Pelanggan tanpa No HP berasal dari marketplace; dibedakan lewat nama + alamat.",
-  "Nomor HP ditampilkan tersamar untuk keamanan data.",
+  "Channel Utama = channel penjualan (TikTok Shop, Shopee, Meta, Stokis, dst) yang paling sering dipakai pelanggan saat order. \"Belum Tercatat\" berarti channel tidak dicatat di data lama, bukan data hilang.",
   "Provinsi dibaca otomatis dari alamat — pelanggan tanpa alamat (marketplace) provinsinya kosong dulu.",
-  "Jumlah transaksi dihitung per belanja: beli beberapa produk sekali checkout = 1 transaksi.",
+  "Frekuensi Trx = berapa kali pelanggan belanja; beli beberapa produk sekali checkout dihitung 1 transaksi (sama seperti di Database Cohort). Angka ini total sepanjang waktu, bukan per periode.",
+  "Tanggal (kolom paling kiri) = tanggal pelanggan ini pertama kali tercatat/transaksi, sama seperti kolom Tanggal di data lama. Bisa difilter untuk melihat pelanggan yang masuk pada bulan/tanggal tertentu.",
 ];
 
 const editFields: EditField<CustomerRow>[] = [
   { key: "id", label: "ID", readOnly: true },
+  { key: "firstPurchase", label: "Tanggal", readOnly: true },
   { key: "name", label: "Nama" },
   { key: "phone", label: "No. HP" },
   { key: "city", label: "Kota" },
   { key: "province", label: "Provinsi" },
-  { key: "source", label: "Asal Data" },
-  { key: "trx", label: "Transaksi", type: "number" },
+  { key: "source", label: "Channel Utama" },
+  { key: "trx", label: "Frekuensi Trx", type: "number" },
   { key: "status", label: "Status" },
 ];
 
@@ -66,8 +70,9 @@ export function PelangganSection() {
   const [editingRow, setEditingRow] = useState<CustomerRow | null>(null);
   const {
     rows, total, totalAll, loading, error, page, setPage, pageSize, setPageSize, totalPages,
-    query, setQuery, filters, setFilter, sort, setSort, resetControls, updateRows, hasActiveControls, distinct,
-  } = usePagedData<CustomerRow>("/data/customers.json", ["id", "name", "phone", "city", "province"]);
+    query, setQuery, filters, setFilter, dateFrom, setDateFrom, dateTo, setDateTo,
+    sort, setSort, resetControls, updateRows, hasActiveControls, distinct,
+  } = usePagedData<CustomerRow>("/api/master/customers", ["id", "name", "phone", "city", "province"]);
 
   const saveRow = (updated: CustomerRow) => {
     updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
@@ -77,6 +82,13 @@ export function PelangganSection() {
     if (!window.confirm("Hapus data pelanggan ini dari tampilan sementara?")) return;
     updateRows((current) => current.filter((row) => row.id !== id));
   };
+
+  const ROW_HEIGHT = 45;
+  const { containerRef, start, end, topSpacer, bottomSpacer } = useRowVirtualizer<HTMLDivElement>({
+    count: rows.length,
+    rowHeight: ROW_HEIGHT,
+  });
+  const visibleRows = rows.slice(start, end);
 
   return (
     <div className="flex flex-col gap-6">
@@ -121,9 +133,16 @@ export function PelangganSection() {
                 onChange={setSort}
                 allLabel="Urutan asli"
                 options={[
-                  { value: "trx:desc", label: "Transaksi terbanyak" },
+                  { value: "trx:desc", label: "Frekuensi Trx terbanyak" },
                   { value: "name:asc", label: "Nama A-Z" },
                 ]}
+              />
+              <DateRangeFilter
+                label="Tanggal"
+                from={dateFrom.firstPurchase ?? ""}
+                to={dateTo.firstPurchase ?? ""}
+                onFrom={(v) => setDateFrom("firstPurchase", v)}
+                onTo={(v) => setDateTo("firstPurchase", v)}
               />
             </TableToolbar>
             {total === 0 && (
@@ -131,31 +150,38 @@ export function PelangganSection() {
                 Tidak ada data yang cocok dengan pencarian/filter.
               </p>
             )}
-            <div className="max-h-[560px] overflow-auto">
-              <table className="w-full min-w-[820px] text-sm">
+            <div ref={containerRef} className="max-h-[560px] overflow-auto">
+              <table className="w-full min-w-[980px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-slate-200">
+                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Tanggal</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">ID</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Nama</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">No. HP</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Kota</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Provinsi</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Asal Data</th>
-                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Transaksi</th>
+                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Channel Utama</th>
+                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Frekuensi Trx</th>
                     <th className="pb-3 pr-4 text-right font-bold text-slate-500">Status</th>
                     <th className="pb-3 text-right font-bold text-slate-500">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {rows.map((row) => (
+                  {topSpacer > 0 && (
+                    <tr aria-hidden="true" style={{ height: topSpacer }}>
+                      <td colSpan={10} />
+                    </tr>
+                  )}
+                  {visibleRows.map((row) => (
                     <tr key={row.id}>
+                      <td className="py-3 pr-4 font-medium text-slate-500">{row.firstPurchase || "-"}</td>
                       <td className="py-3 pr-4 font-medium text-slate-500">{row.id}</td>
                       <td className="py-3 pr-4 font-semibold text-slate-950">{row.name}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.phone}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.city}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.province}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.source}</td>
-                      <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.trx)}</td>
+                      <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatNumber(row.trx)}x</td>
                       <td className="py-3 pr-4 text-right">
                         <StatusBadge label={row.status} tone={statusTone[row.status]} />
                       </td>
@@ -167,6 +193,11 @@ export function PelangganSection() {
                       </td>
                     </tr>
                   ))}
+                  {bottomSpacer > 0 && (
+                    <tr aria-hidden="true" style={{ height: bottomSpacer }}>
+                      <td colSpan={10} />
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

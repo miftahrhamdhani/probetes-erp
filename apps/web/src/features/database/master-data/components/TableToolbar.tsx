@@ -9,6 +9,42 @@ interface ToolbarOption {
   label: string;
 }
 
+/** Filter rentang tanggal: pilih dari tanggal, sampai tanggal, atau keduanya untuk 1 tanggal spesifik. */
+export function DateRangeFilter({
+  from,
+  to,
+  onFrom,
+  onTo,
+  label = "Tanggal",
+}: {
+  from: string;
+  to: string;
+  onFrom: (value: string) => void;
+  onTo: (value: string) => void;
+  label?: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 h-10">
+      <span className="whitespace-nowrap text-xs font-bold text-slate-500">{label}</span>
+      <input
+        type="date"
+        value={from}
+        onChange={(event) => onFrom(event.target.value)}
+        aria-label={`${label} dari`}
+        className="h-8 w-[132px] rounded-lg border-0 bg-transparent text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-brand-red/10"
+      />
+      <span className="text-xs font-medium text-slate-400">–</span>
+      <input
+        type="date"
+        value={to}
+        onChange={(event) => onTo(event.target.value)}
+        aria-label={`${label} sampai`}
+        className="h-8 w-[132px] rounded-lg border-0 bg-transparent text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-brand-red/10"
+      />
+    </div>
+  );
+}
+
 export function ToolbarSelect({
   value,
   onChange,

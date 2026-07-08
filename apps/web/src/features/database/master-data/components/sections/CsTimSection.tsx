@@ -59,8 +59,8 @@ const editFields: EditField<UserRow>[] = [
 
 export function CsTimSection() {
   const [editingRow, setEditingRow] = useState<UserRow | null>(null);
-  const users = usePagedData<UserRow>("/data/users.json", ["id", "name", "role", "divisi"]);
-  const sumberLain = usePagedData<SumberLainRow>("/data/sumber_lain.json", ["name", "jenis"]);
+  const users = usePagedData<UserRow>("/api/master/users", ["id", "name", "role", "divisi"]);
+  const sumberLain = usePagedData<SumberLainRow>("/api/master/sumber-lain", ["name", "jenis"]);
 
   const saveRow = (updated: UserRow) => {
     users.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));

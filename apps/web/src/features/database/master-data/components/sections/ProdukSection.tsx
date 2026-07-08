@@ -49,7 +49,7 @@ export function ProdukSection() {
   const {
     rows, total, totalAll, loading, error, page, setPage, pageSize, setPageSize, totalPages,
     query, setQuery, filters, setFilter, sort, setSort, resetControls, updateRows, hasActiveControls,
-  } = usePagedData<ProductRow>("/data/products.json", ["id", "name", "sku", "original"]);
+  } = usePagedData<ProductRow>("/api/master/products", ["id", "name", "sku", "original"]);
 
   const saveRow = (updated: ProductRow) => {
     updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));

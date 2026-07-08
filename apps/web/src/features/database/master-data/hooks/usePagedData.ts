@@ -20,6 +20,10 @@ export function usePagedData<T extends object>(
   const [query, setQueryState] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [sort, setSortState] = useState("");
+  // Filter rentang tanggal: { kolom: "YYYY-MM-DD" } untuk batas dari/sampai.
+  // Kosong = tidak dibatasi. dateTo diperlakukan inklusif (sampai akhir hari itu).
+  const [dateFrom, setDateFromState] = useState<Record<string, string>>({});
+  const [dateTo, setDateToState] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let alive = true;
@@ -53,6 +57,21 @@ export function usePagedData<T extends object>(
     for (const [key, val] of Object.entries(filters)) {
       if (val) rows = rows.filter((r) => String(r[key as keyof T] ?? "") === val);
     }
+    // Kolom tanggal boleh berupa 1 string ("2025-06-07") atau array tanggal
+    // (mis. semua tanggal transaksi seorang pelanggan). Untuk array, baris lolos
+    // jika ADA SATU tanggal di dalamnya yang masuk rentang — bukan hanya kolom
+    // tunggal seperti "pertama beli" saja.
+    const dateKeys = new Set([...Object.keys(dateFrom), ...Object.keys(dateTo)]);
+    for (const key of dateKeys) {
+      const from = dateFrom[key];
+      const to = dateTo[key];
+      if (!from && !to) continue;
+      rows = rows.filter((r) => {
+        const raw = r[key as keyof T];
+        const dates = Array.isArray(raw) ? (raw as unknown[]).map(String) : [String(raw ?? "")];
+        return dates.some((v) => v && v !== "-" && (!from || v >= from) && (!to || v <= to));
+      });
+    }
     if (sort) {
       const [key, dir] = sort.split(":");
       rows = [...rows].sort((a, b) => {
@@ -67,7 +86,7 @@ export function usePagedData<T extends object>(
     }
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, query, filters, sort, searchKeyId]);
+  }, [allRows, query, filters, dateFrom, dateTo, sort, searchKeyId]);
 
   const total = filtered.length;
   const totalAll = allRows?.length ?? 0;
@@ -96,9 +115,19 @@ export function usePagedData<T extends object>(
     setSortState(value);
     setPage(1);
   };
+  const setDateFrom = (key: string, value: string) => {
+    setDateFromState((f) => ({ ...f, [key]: value }));
+    setPage(1);
+  };
+  const setDateTo = (key: string, value: string) => {
+    setDateToState((f) => ({ ...f, [key]: value }));
+    setPage(1);
+  };
   const resetControls = () => {
     setQueryState("");
     setFilters({});
+    setDateFromState({});
+    setDateToState({});
     setSortState("");
     setPage(1);
   };
@@ -106,7 +135,10 @@ export function usePagedData<T extends object>(
     setAllRows((current) => (current ? updater(current) : current));
     setPage(1);
   };
-  const hasActiveControls = Boolean(query || sort || Object.values(filters).some(Boolean));
+  const hasActiveControls = Boolean(
+    query || sort || Object.values(filters).some(Boolean) ||
+    Object.values(dateFrom).some(Boolean) || Object.values(dateTo).some(Boolean),
+  );
 
   const distinct = (key: keyof T) => {
     if (!allRows) return [] as string[];
@@ -130,6 +162,10 @@ export function usePagedData<T extends object>(
     setQuery,
     filters,
     setFilter,
+    dateFrom,
+    setDateFrom,
+    dateTo,
+    setDateTo,
     sort,
     setSort,
     resetControls,

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { DatabaseBackButton } from "@/features/database/components/DatabaseBackButton";
 import { masterDataMenus } from "./config/masterDataMenus";
+import { DataPeriodBadge } from "./components/DataPeriodBadge";
 import { MasterDataContent } from "./components/MasterDataContent";
 import { MasterDataMenuGrid } from "./components/MasterDataMenuGrid";
 import type { MasterDataSectionId } from "./types/masterData.types";
@@ -20,9 +21,7 @@ export function MasterDataPage() {
           <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-600 sm:text-base">
             Pelanggan, cohort, produk, channel, tim, dan ekspedisi sebagai data acuan utama ERP.
           </p>
-          <p className="mt-1 text-xs font-medium text-slate-400">
-            Data per 6 Juli 2026 — hasil penggabungan data awal (masih statis, belum tersambung database).
-          </p>
+          <DataPeriodBadge />
         </div>
         <MasterDataMenuGrid menus={masterDataMenus} activeId={activeSection} onSelect={setActiveSection} />
         <MasterDataContent activeId={activeSection} />

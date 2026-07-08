@@ -72,8 +72,8 @@ const mitraEditFields: EditField<MitraRow>[] = [
 export function ChannelSection() {
   const [editingChannel, setEditingChannel] = useState<ChannelRow | null>(null);
   const [editingMitra, setEditingMitra] = useState<MitraRow | null>(null);
-  const channels = usePagedData<ChannelRow>("/data/channels.json", ["id", "name", "type", "original"]);
-  const mitra = usePagedData<MitraRow>("/data/mitra.json", ["id", "name", "original"]);
+  const channels = usePagedData<ChannelRow>("/api/master/channels", ["id", "name", "type", "original"]);
+  const mitra = usePagedData<MitraRow>("/api/master/mitra", ["id", "name", "original"]);
 
   const saveChannel = (updated: ChannelRow) => {
     channels.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));

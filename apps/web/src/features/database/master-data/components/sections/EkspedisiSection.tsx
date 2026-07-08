@@ -47,7 +47,7 @@ export function EkspedisiSection() {
     rows, total, totalAll, loading, error, page, setPage, pageSize, setPageSize, totalPages,
     query, setQuery, filters, setFilter, sort, setSort, resetControls, hasActiveControls, distinct,
     updateRows,
-  } = usePagedData<CourierRow>("/data/couriers.json", ["id", "name", "original", "service"]);
+  } = usePagedData<CourierRow>("/api/master/couriers", ["id", "name", "original", "service"]);
 
   const saveCourier = (updated: CourierRow) => {
     updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));

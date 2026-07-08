@@ -6,10 +6,11 @@ import { KpiCard } from "@/features/database/overview/components/KpiCard";
 import { StatusBadge } from "@/features/database/overview/components/StatusBadge";
 import type { StatusTone } from "@/features/database/overview/types/databaseOverview.types";
 import { usePagedData } from "../../hooks/usePagedData";
+import { useRowVirtualizer } from "../../hooks/useRowVirtualizer";
 import { formatNumber, formatRupiah } from "../../lib/format";
 import { EditRecordModal, type EditField } from "../EditRecordModal";
 import { TablePagination } from "../TablePagination";
-import { TableToolbar, ToolbarSelect } from "../TableToolbar";
+import { DateRangeFilter, TableToolbar, ToolbarSelect } from "../TableToolbar";
 
 interface CohortSummaryRow {
   wa: string;
@@ -54,6 +55,7 @@ const notes = [
   "Belanja beberapa produk sekali checkout = 1 transaksi — baris dengan ID Transaksi sama adalah satu belanjaan.",
   "Frekuensi Trx = berapa kali pelanggan belanja (bukan jumlah barang; jumlah barang ada di Total Qty).",
   "Cluster membantu CS menentukan siapa yang perlu di-follow-up atau diarahkan ke konsultasi WA grup.",
+  "Ringkasan Customer Cohort punya 2 tanggal: Beli Awal (transaksi pertama, jadi patokan filter) dan Beli Akhir (transaksi terakhir, info saja). Riwayat Transaksi punya 1 tanggal per baris karena tiap baris memang 1 transaksi.",
 ];
 
 const summaryEditFields: EditField<CohortSummaryRow>[] = [
@@ -83,8 +85,16 @@ const riwayatEditFields: EditField<CohortTxRow>[] = [
 export function CohortSection() {
   const [editingSummary, setEditingSummary] = useState<CohortSummaryRow | null>(null);
   const [editingRiwayat, setEditingRiwayat] = useState<CohortTxRow | null>(null);
-  const summary = usePagedData<CohortSummaryRow>("/data/cohort_summary.json", ["wa", "name"]);
-  const riwayat = usePagedData<CohortTxRow>("/data/cohort_riwayat.json", ["wa", "name", "product", "trx"]);
+  const summary = usePagedData<CohortSummaryRow>("/api/master/cohort-summary", ["wa", "name"]);
+  const riwayat = usePagedData<CohortTxRow>("/api/master/cohort-riwayat", ["wa", "name", "product", "trx"]);
+  const {
+    dateFrom: summaryDateFrom, setDateFrom: setSummaryDateFrom,
+    dateTo: summaryDateTo, setDateTo: setSummaryDateTo,
+  } = summary;
+  const {
+    dateFrom: riwayatDateFrom, setDateFrom: setRiwayatDateFrom,
+    dateTo: riwayatDateTo, setDateTo: setRiwayatDateTo,
+  } = riwayat;
 
   const saveSummary = (updated: CohortSummaryRow) => {
     summary.updateRows((current) => current.map((row) => (row.wa === updated.wa ? updated : row)));
@@ -104,6 +114,12 @@ export function CohortSection() {
     if (!window.confirm("Hapus baris transaksi ini dari tampilan sementara?")) return;
     riwayat.updateRows((current) => current.filter((row) => !(row.trx === trx && row.wa === wa)));
   };
+
+  const ROW_HEIGHT = 45;
+  const summaryVirt = useRowVirtualizer<HTMLDivElement>({ count: summary.rows.length, rowHeight: ROW_HEIGHT });
+  const visibleSummary = summary.rows.slice(summaryVirt.start, summaryVirt.end);
+  const riwayatVirt = useRowVirtualizer<HTMLDivElement>({ count: riwayat.rows.length, rowHeight: ROW_HEIGHT });
+  const visibleRiwayat = riwayat.rows.slice(riwayatVirt.start, riwayatVirt.end);
 
   return (
     <div className="flex flex-col gap-6">
@@ -148,21 +164,28 @@ export function CohortSection() {
                   { value: "name:asc", label: "Nama A-Z" },
                 ]}
               />
+              <DateRangeFilter
+                label="Beli Awal"
+                from={summaryDateFrom.first ?? ""}
+                to={summaryDateTo.first ?? ""}
+                onFrom={(v) => setSummaryDateFrom("first", v)}
+                onTo={(v) => setSummaryDateTo("first", v)}
+              />
             </TableToolbar>
             {summary.total === 0 && (
               <p className="py-6 text-center text-sm font-medium text-slate-400">
                 Tidak ada data yang cocok dengan pencarian/filter.
               </p>
             )}
-            <div className="max-h-[560px] overflow-auto">
+            <div ref={summaryVirt.containerRef} className="max-h-[560px] overflow-auto">
               <table className="w-full min-w-[900px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-slate-200">
+                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Beli Awal</th>
+                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Beli Akhir</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">No. WA (ID)</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Nama</th>
                     <th className="pb-3 pr-4 text-left font-bold text-slate-500">Cohort</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Beli Awal</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Beli Akhir</th>
                     <th className="pb-3 pr-4 text-right font-bold text-slate-500">Frekuensi Trx</th>
                     <th className="pb-3 pr-4 text-right font-bold text-slate-500">Total Qty</th>
                     <th className="pb-3 pr-4 text-right font-bold text-slate-500">Total Beli</th>
@@ -171,13 +194,18 @@ export function CohortSection() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {summary.rows.map((row, index) => (
-                    <tr key={`${row.wa}-${index}`}>
+                  {summaryVirt.topSpacer > 0 && (
+                    <tr aria-hidden="true" style={{ height: summaryVirt.topSpacer }}>
+                      <td colSpan={10} />
+                    </tr>
+                  )}
+                  {visibleSummary.map((row, index) => (
+                    <tr key={`${row.wa}-${summaryVirt.start + index}`}>
+                      <td className="py-3 pr-4 font-medium text-slate-500">{row.first}</td>
+                      <td className="py-3 pr-4 font-medium text-slate-500">{row.last}</td>
                       <td className="py-3 pr-4 font-medium text-slate-500">{row.wa}</td>
                       <td className="py-3 pr-4 font-semibold text-slate-950">{row.name}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.cohort}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-600">{row.first}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-600">{row.last}</td>
                       <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatNumber(row.freq)}x</td>
                       <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.qty)}</td>
                       <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatRupiah(row.total)}</td>
@@ -192,6 +220,11 @@ export function CohortSection() {
                       </td>
                     </tr>
                   ))}
+                  {summaryVirt.bottomSpacer > 0 && (
+                    <tr aria-hidden="true" style={{ height: summaryVirt.bottomSpacer }}>
+                      <td colSpan={10} />
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -241,13 +274,20 @@ export function CohortSection() {
                   { value: "total:desc", label: "Nilai terbesar" },
                 ]}
               />
+              <DateRangeFilter
+                label="Tanggal Transaksi"
+                from={riwayatDateFrom.date ?? ""}
+                to={riwayatDateTo.date ?? ""}
+                onFrom={(v) => setRiwayatDateFrom("date", v)}
+                onTo={(v) => setRiwayatDateTo("date", v)}
+              />
             </TableToolbar>
             {riwayat.total === 0 && (
               <p className="py-6 text-center text-sm font-medium text-slate-400">
                 Tidak ada data yang cocok dengan pencarian/filter.
               </p>
             )}
-            <div className="max-h-[560px] overflow-auto">
+            <div ref={riwayatVirt.containerRef} className="max-h-[560px] overflow-auto">
               <table className="w-full min-w-[900px] text-sm">
                 <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-slate-200">
@@ -264,8 +304,13 @@ export function CohortSection() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {riwayat.rows.map((row, index) => (
-                    <tr key={`${row.trx}-${index}`}>
+                  {riwayatVirt.topSpacer > 0 && (
+                    <tr aria-hidden="true" style={{ height: riwayatVirt.topSpacer }}>
+                      <td colSpan={10} />
+                    </tr>
+                  )}
+                  {visibleRiwayat.map((row, index) => (
+                    <tr key={`${row.trx}-${riwayatVirt.start + index}`}>
                       <td className="py-3 pr-4 font-medium text-slate-500">{row.date}</td>
                       <td className="py-3 pr-4 font-medium text-slate-500">{row.trx}</td>
                       <td className="py-3 pr-4 font-medium text-slate-600">{row.wa}</td>
@@ -283,6 +328,11 @@ export function CohortSection() {
                       </td>
                     </tr>
                   ))}
+                  {riwayatVirt.bottomSpacer > 0 && (
+                    <tr aria-hidden="true" style={{ height: riwayatVirt.bottomSpacer }}>
+                      <td colSpan={10} />
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
