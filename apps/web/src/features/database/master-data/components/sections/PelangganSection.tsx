@@ -88,18 +88,19 @@ export function PelangganSection() {
   };
 
   const columns: MasterColumn<CustomerRow>[] = [
-    { key: "firstPurchase", label: "Tanggal", tone: "muted", render: (row) => row.firstPurchase || "-" },
-    { key: "id", label: "ID", tone: "muted" },
-    { key: "name", label: "Nama", tone: "strong" },
-    { key: "phone", label: "No. HP" },
-    { key: "city", label: "Kota" },
-    { key: "province", label: "Provinsi" },
-    { key: "source", label: "Channel Utama" },
-    { key: "trx", label: "Frekuensi Trx", align: "right", tone: "strong", render: (row) => `${formatNumber(row.trx)}x` },
+    { key: "firstPurchase", label: "Tanggal", tone: "muted", width: 110, render: (row) => row.firstPurchase || "-" },
+    { key: "id", label: "ID", tone: "muted", width: 130 },
+    { key: "name", label: "Nama", tone: "strong", width: 210 },
+    { key: "phone", label: "No. HP", width: 140 },
+    { key: "city", label: "Kota", width: 160 },
+    { key: "province", label: "Provinsi", width: 160 },
+    { key: "source", label: "Channel Utama", width: 150 },
+    { key: "trx", label: "Frekuensi Trx", align: "right", tone: "strong", width: 130, render: (row) => `${formatNumber(row.trx)}x` },
     {
       key: "status",
       label: "Status",
       align: "right",
+      width: 130,
       render: (row) => <StatusBadge label={row.status} tone={statusTone[row.status]} />,
     },
   ];

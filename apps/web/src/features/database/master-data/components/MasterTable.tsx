@@ -19,7 +19,12 @@ export interface MasterColumn<T> {
   align?: "right";
   tone?: "muted" | "normal" | "strong";
   render?: (row: T) => ReactNode;
+  /** Lebar kolom tetap (px). Kolom pakai layout tetap agar tidak geser saat scroll. */
+  width?: number;
 }
+
+const DEFAULT_COL_WIDTH = 150;
+const ACTIONS_COL_WIDTH = 200;
 
 interface MasterTableProps<T extends object> {
   paged: PagedData<T>;
@@ -61,6 +66,11 @@ export function MasterTable<T extends object>({
   virtualized = false,
 }: MasterTableProps<T>) {
   const colCount = columns.length + (renderActions ? 1 : 0);
+  // Lebar tabel dari jumlah lebar kolom tetap → kolom tidak pernah geser saat scroll virtual.
+  const fixedWidth =
+    columns.reduce((sum, col) => sum + (col.width ?? DEFAULT_COL_WIDTH), 0) +
+    (renderActions ? ACTIONS_COL_WIDTH : 0);
+  const tableWidth = Math.max(minWidth, fixedWidth);
   const virt = useRowVirtualizer<HTMLDivElement>({ count: paged.rows.length, rowHeight: ROW_HEIGHT });
   const start = virtualized ? virt.start : 0;
   const end = virtualized ? virt.end : paged.rows.length;
@@ -102,13 +112,19 @@ export function MasterTable<T extends object>({
         </p>
       )}
       <div ref={virtualized ? virt.containerRef : undefined} className="overflow-auto" style={{ maxHeight }}>
-        <table className="w-full text-sm" style={{ minWidth }}>
+        <table className="text-sm" style={{ width: tableWidth, minWidth: tableWidth, tableLayout: "fixed" }}>
+          <colgroup>
+            {columns.map((col) => (
+              <col key={col.key} style={{ width: col.width ?? DEFAULT_COL_WIDTH }} />
+            ))}
+            {renderActions && <col style={{ width: ACTIONS_COL_WIDTH }} />}
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-white">
             <tr className="border-b border-slate-200">
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className={`pb-3 pr-4 font-bold text-slate-500 ${col.align === "right" ? "text-right" : "text-left"}`}
+                  className={`overflow-hidden text-ellipsis whitespace-nowrap pb-3 pr-4 font-bold text-slate-500 ${col.align === "right" ? "text-right" : "text-left"}`}
                 >
                   {col.label}
                 </th>
@@ -124,16 +140,18 @@ export function MasterTable<T extends object>({
             )}
             {visibleRows.map((row, index) => (
               <tr key={rowKey(row, start + index)}>
-                {columns.map((col) => (
-                  <td
-                    key={col.key}
-                    className={`py-3 pr-4 ${col.align === "right" ? "text-right" : ""} ${toneClass[col.tone ?? "normal"]}`}
-                  >
-                    {col.render
-                      ? col.render(row)
-                      : String((row as Record<string, unknown>)[col.key] ?? "-")}
-                  </td>
-                ))}
+                {columns.map((col) => {
+                  const plainValue = col.render ? null : String((row as Record<string, unknown>)[col.key] ?? "-");
+                  return (
+                    <td
+                      key={col.key}
+                      title={plainValue ?? undefined}
+                      className={`overflow-hidden text-ellipsis whitespace-nowrap py-3 pr-4 ${col.align === "right" ? "text-right" : ""} ${toneClass[col.tone ?? "normal"]}`}
+                    >
+                      {col.render ? col.render(row) : plainValue}
+                    </td>
+                  );
+                })}
                 {renderActions && (
                   <td className="py-3 text-right">
                     <div className="flex justify-end gap-2">{renderActions(row)}</div>

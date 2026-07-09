@@ -118,33 +118,34 @@ export function CohortSection() {
   };
 
   const summaryColumns: MasterColumn<CohortSummaryRow>[] = [
-    { key: "first", label: "Beli Awal", tone: "muted" },
-    { key: "last", label: "Beli Akhir", tone: "muted" },
-    { key: "id", label: "ID Customer", tone: "muted" },
-    { key: "wa", label: "No. WA", tone: "muted" },
-    { key: "name", label: "Nama", tone: "strong" },
-    { key: "cohort", label: "Cohort" },
-    { key: "freq", label: "Frekuensi Trx", align: "right", tone: "strong", render: (row) => `${formatNumber(row.freq)}x` },
-    { key: "qty", label: "Total Qty", align: "right", render: (row) => formatNumber(row.qty) },
-    { key: "total", label: "Total Beli", align: "right", tone: "strong", render: (row) => formatRupiah(row.total) },
+    { key: "first", label: "Beli Awal", tone: "muted", width: 110 },
+    { key: "last", label: "Beli Akhir", tone: "muted", width: 110 },
+    { key: "id", label: "ID Customer", tone: "muted", width: 130 },
+    { key: "wa", label: "No. WA", tone: "muted", width: 140 },
+    { key: "name", label: "Nama", tone: "strong", width: 200 },
+    { key: "cohort", label: "Cohort", width: 120 },
+    { key: "freq", label: "Frekuensi Trx", align: "right", tone: "strong", width: 130, render: (row) => `${formatNumber(row.freq)}x` },
+    { key: "qty", label: "Total Qty", align: "right", width: 110, render: (row) => formatNumber(row.qty) },
+    { key: "total", label: "Total Beli", align: "right", tone: "strong", width: 150, render: (row) => formatRupiah(row.total) },
     {
       key: "cluster",
       label: "Cluster",
       align: "right",
+      width: 130,
       render: (row) => <StatusBadge label={row.cluster} tone={clusterTone[row.cluster]} />,
     },
   ];
 
   const riwayatColumns: MasterColumn<CohortTxRow>[] = [
-    { key: "date", label: "Tanggal", tone: "muted" },
-    { key: "trx", label: "ID Transaksi", tone: "muted" },
-    { key: "wa", label: "No. WA" },
-    { key: "name", label: "Customer", tone: "strong" },
-    { key: "cs", label: "CS" },
-    { key: "product", label: "Produk" },
-    { key: "qty", label: "Qty", align: "right", render: (row) => formatNumber(row.qty) },
-    { key: "total", label: "Total", align: "right", tone: "strong", render: (row) => formatRupiah(row.total) },
-    { key: "cohort", label: "Cohort" },
+    { key: "date", label: "Tanggal", tone: "muted", width: 110 },
+    { key: "trx", label: "ID Transaksi", tone: "muted", width: 140 },
+    { key: "wa", label: "No. WA", width: 140 },
+    { key: "name", label: "Customer", tone: "strong", width: 200 },
+    { key: "cs", label: "CS", width: 130 },
+    { key: "product", label: "Produk", width: 220 },
+    { key: "qty", label: "Qty", align: "right", width: 90, render: (row) => formatNumber(row.qty) },
+    { key: "total", label: "Total", align: "right", tone: "strong", width: 140, render: (row) => formatRupiah(row.total) },
+    { key: "cohort", label: "Cohort", width: 120 },
   ];
 
   return (
