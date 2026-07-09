@@ -230,40 +230,17 @@ User pernah menegaskan bahwa saat klik menu Database, harus ada kotak penjelasan
 ---
 11. Halaman /database/overview
 Halaman `/database/overview` adalah halaman Ringkasan Data.
-Desainnya memakai:
+UPDATE Juli 2026: halaman ini SUDAH membaca database PostgreSQL asli lewat `/api/database/summary` — bukan mock lagi. Desain 6 card selector lama sudah diganti.
+Desain sekarang:
 Header global tetap sama.
 Background abu-abu muda.
 Judul halaman: `Ringkasan Data`.
-Subtitle singkat.
-6 card merah sebagai selector/tab.
-Konten aktif di bawah.
-Hanya satu section aktif tampil.
-Jangan tampilkan semua section sekaligus.
-6 menu internal:
-```txt
-1. Ringkasan Data Tersedia
-2. Perbandingan Data Pesanan dan Penjualan
-3. Kesiapan Data Utama
-4. Nama Produk yang Perlu Dirapikan
-5. Kualitas Data Awal
-6. Keamanan dan Cadangan Data
-```
-Data angka static/mock yang dipakai sementara:
-```txt
-Pelanggan: 2.055
-Pesanan: 2.962
-Item Pesanan: 2.962
-Transaksi Penjualan: 2.229
-Nama Produk Perlu Dirapikan: 41
-Nilai Pesanan: 388.824.144
-Total Penjualan: 332.951.417
-```
-Catatan:
-```txt
-Data ini masih static/mock frontend.
-Nanti setelah database asli aktif, data diganti dari API/database.
-```
-Jangan menyebut data ini sebagai live database.
+Baris 1: KPI Angka Inti Bisnis (pelanggan, target CRM, pesanan, transaksi cohort, produk) + rentang tanggal data.
+Baris 2: Kondisi Pelanggan (baru/repeat/high value) dan donut Segmen Pelanggan (RFM, tanpa Non-CRM).
+Baris 3: Kesehatan Data — tiap kartu klik menuju /database/data-quality.
+Semua angka dari database; jangan menulis angka mati (hardcode) di halaman ini.
+Nilai uang pesanan-vs-penjualan sengaja tidak ditampilkan berdampingan (beda definisi, menyesatkan) — laporan nilai masuk menu Reports nanti.
+Angka patokan lama (Pelanggan 2.055 dst) hanyalah snapshot export Juni 2026 — lihat bagian 32; database sekarang berisi ±21.603 pelanggan.
 ---
 12. Tombol Kembali
 Untuk halaman turunan module, tombol kembali ditempatkan di bawah kiri area konten.
@@ -324,10 +301,7 @@ Transaksi Terakhir
 Status Customer
 Status Validasi
 ```
-Nomor HP harus dimasking di UI, misalnya:
-```txt
-0812****1234
-```
+Nomor HP: keputusan owner (tercatat di komentar API customers) — tampilkan PENUH tanpa masking, format lokal 08xx. Jangan kembalikan masking tanpa persetujuan owner.
 Alamat lengkap tidak perlu tampil di tabel utama. Tampilkan alamat ringkas saja.
 Alamat lengkap bisa muncul di detail jika nanti dibuat.
 Status customer:
@@ -1002,9 +976,14 @@ Urutan kerja:
 3. Buat Data Utama / Master Data.
 4. Masukkan konsep Pelanggan, Database Cohort, Produk, Channel, CS/Tim, Ekspedisi.
 5. Tambahkan tombol kembali bawah kiri.
-6. Jangan buat backend dulu.
-7. Jangan connect API dulu.
-8. Pakai data static/mock dulu.
+```
+UPDATE Juli 2026 — kondisi sekarang:
+```txt
+Database PostgreSQL lokal (probetes_erp) sudah aktif; koneksi via DATABASE_URL di apps/web/.env.local.
+Menu Database (Ringkasan, Data Utama, Kualitas Data, Status Cadangan) sudah membaca API /api/* dari database asli.
+Jangan menambah angka mati (hardcode) di UI — KPI/badge harus dari API.
+Rumus kualitas data pelanggan ada di apps/web/src/lib/quality-sql.ts — pakai itu, jangan menulis rumus duplikat.
+Edit/Hapus di Data Utama masih tampilan sementara (belum ada API tulis) — banner peringatannya jangan dihapus.
 ```
 ---
 36. Aturan Saat Membuat UI Baru

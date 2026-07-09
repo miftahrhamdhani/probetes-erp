@@ -1,8 +1,7 @@
 import { cn } from "@/lib/cn";
-import type { StatusTone } from "../types/databaseOverview.types";
+import type { StatusTone } from "../types/database.types";
 
 const exactTone: Record<string, StatusTone> = {
-  // Bahasa Indonesia
   Tersedia: "green",
   Aman: "green",
   Terjamin: "green",
@@ -17,22 +16,6 @@ const exactTone: Record<string, StatusTone> = {
   "Tidak lengkap": "amber",
   Terlindungi: "blue",
   Aktif: "blue",
-  // English fallback
-  Healthy: "green",
-  Success: "green",
-  Passed: "green",
-  Approved: "green",
-  Stable: "green",
-  "On Track": "green",
-  Watch: "amber",
-  Warning: "amber",
-  Review: "amber",
-  Pending: "amber",
-  Assigned: "blue",
-  Open: "blue",
-  Critical: "red",
-  Failed: "red",
-  Blocked: "red",
 };
 
 const toneClass: Record<StatusTone, string> = {

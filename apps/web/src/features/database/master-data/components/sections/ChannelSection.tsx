@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { DataPanel } from "@/features/database/overview/components/DataPanel";
-import { KpiCard } from "@/features/database/overview/components/KpiCard";
-import { StatusBadge } from "@/features/database/overview/components/StatusBadge";
+import { useEffect, useMemo, useState } from "react";
+import { DataPanel } from "@/features/database/components/DataPanel";
+import { KpiCard } from "@/features/database/components/KpiCard";
+import { StatusBadge } from "@/features/database/components/StatusBadge";
 import { usePagedData } from "../../hooks/usePagedData";
 import { formatNumber, formatRupiah } from "../../lib/format";
 import { EditRecordModal, type EditField } from "../EditRecordModal";
-import { TablePagination } from "../TablePagination";
-import { TableToolbar, ToolbarSelect } from "../TableToolbar";
+import { MasterTable, NotesList, RowActionButton, type MasterColumn } from "../MasterTable";
+import { ToolbarSelect } from "../TableToolbar";
 
 interface ChannelRow {
   id: string;
@@ -29,19 +29,10 @@ interface MitraRow {
   status: string;
 }
 
-const kpiItems = [
-  { label: "Channel", value: "6", detail: "Termasuk Stokis", tone: "green" as const },
-  { label: "Divisi Tim", value: "4", detail: "Terpisah", tone: "blue" as const },
-  { label: "Mitra", value: "6", detail: "Tabel sendiri", tone: "green" as const },
-  { label: "Transaksi Tanpa Platform", value: "21.026", detail: "Perlu dicek", tone: "amber" as const },
-];
-
-const divisiRows = [
-  { name: "Akuisisi", orders: "15.548" },
-  { name: "CRM", orders: "8.971" },
-  { name: "Marketplace", orders: "7.311" },
-  { name: "CS", orders: "1" },
-];
+interface DivisiRow {
+  name: string;
+  orders: number;
+}
 
 const notes = [
   "Channel = tempat order masuk. Jenisnya 4: Akuisisi (iklan), Retensi (CRM/WA), Marketplace (TikTok/Shopee), dan Offline (Stokis) — sesuai arahan owner.",
@@ -72,8 +63,33 @@ const mitraEditFields: EditField<MitraRow>[] = [
 export function ChannelSection() {
   const [editingChannel, setEditingChannel] = useState<ChannelRow | null>(null);
   const [editingMitra, setEditingMitra] = useState<MitraRow | null>(null);
+  const [divisiRows, setDivisiRows] = useState<DivisiRow[]>([]);
   const channels = usePagedData<ChannelRow>("/api/master/channels", ["id", "name", "type", "original"]);
   const mitra = usePagedData<MitraRow>("/api/master/mitra", ["id", "name", "original"]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/master/divisi")
+      .then((res) => (res.ok ? (res.json() as Promise<DivisiRow[]>) : Promise.reject()))
+      .then((data) => {
+        if (alive) setDivisiRows(data);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // KPI dihitung dari data yang sama dengan tabel — tidak ada angka mati.
+  const kpiItems = useMemo(() => {
+    const tanpaPlatform = channels.allRows.find((row) => row.name === "Belum Tercatat")?.orders ?? 0;
+    return [
+      { label: "Channel", value: formatNumber(channels.allRows.length), detail: "Termasuk Stokis", tone: "green" as const },
+      { label: "Divisi Tim", value: formatNumber(divisiRows.length), detail: "Terpisah", tone: "blue" as const },
+      { label: "Mitra", value: formatNumber(mitra.allRows.length), detail: "Tabel sendiri", tone: "green" as const },
+      { label: "Pesanan Tanpa Platform", value: formatNumber(tanpaPlatform), detail: "Belum tercatat", tone: "amber" as const },
+    ];
+  }, [channels.allRows, mitra.allRows, divisiRows]);
 
   const saveChannel = (updated: ChannelRow) => {
     channels.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
@@ -92,6 +108,25 @@ export function ChannelSection() {
     mitra.updateRows((current) => current.filter((row) => row.id !== id));
   };
 
+  const channelColumns: MasterColumn<ChannelRow>[] = [
+    { key: "id", label: "ID", tone: "muted" },
+    { key: "name", label: "Channel", tone: "strong" },
+    { key: "type", label: "Jenis" },
+    { key: "original", label: "Nama Asli" },
+    { key: "orders", label: "Pesanan", align: "right", render: (row) => formatNumber(row.orders) },
+    { key: "value", label: "Nilai", align: "right", tone: "strong", render: (row) => formatRupiah(row.value) },
+    { key: "status", label: "Status", align: "right", render: (row) => <StatusBadge label={row.status} /> },
+  ];
+
+  const mitraColumns: MasterColumn<MitraRow>[] = [
+    { key: "id", label: "ID", tone: "muted" },
+    { key: "name", label: "Mitra", tone: "strong" },
+    { key: "original", label: "Nama Asli" },
+    { key: "orders", label: "Pesanan", align: "right", render: (row) => formatNumber(row.orders) },
+    { key: "value", label: "Nilai", align: "right", tone: "strong", render: (row) => formatRupiah(row.value) },
+    { key: "status", label: "Status", align: "right", render: (row) => <StatusBadge label={row.status} /> },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -101,23 +136,14 @@ export function ChannelSection() {
       </div>
 
       <DataPanel title="Daftar Channel" subtitle="Asal order berdasarkan platform.">
-        {channels.loading && <p className="py-8 text-center text-sm font-medium text-slate-400">Memuat data…</p>}
-        {channels.error && (
-          <p className="py-8 text-center text-sm font-medium text-amber-600">
-            Data belum tersedia. Jalankan export data terlebih dahulu.
-          </p>
-        )}
-        {!channels.loading && !channels.error && (
-          <>
-            <TableToolbar
-              query={channels.query}
-              onQuery={channels.setQuery}
-              placeholder="Cari channel, jenis, nama asli…"
-              total={channels.total}
-              totalAll={channels.totalAll}
-              onReset={channels.resetControls}
-              hasActive={channels.hasActiveControls}
-            >
+        <MasterTable
+          paged={channels}
+          columns={channelColumns}
+          rowKey={(row) => row.id}
+          searchPlaceholder="Cari channel, jenis, nama asli…"
+          minWidth={820}
+          toolbar={
+            <>
               <ToolbarSelect
                 value={channels.filters.type ?? ""}
                 onChange={(v) => channels.setFilter("type", v)}
@@ -140,80 +166,28 @@ export function ChannelSection() {
                   { value: "name:asc", label: "Channel A-Z" },
                 ]}
               />
-            </TableToolbar>
-            {channels.total === 0 && (
-              <p className="py-6 text-center text-sm font-medium text-slate-400">
-                Tidak ada data yang cocok dengan pencarian/filter.
-              </p>
-            )}
-            <div className="max-h-[560px] overflow-auto">
-              <table className="w-full min-w-[820px] text-sm">
-                <thead className="sticky top-0 z-10 bg-white">
-                  <tr className="border-b border-slate-200">
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">ID</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Channel</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Jenis</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Nama Asli</th>
-                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Pesanan</th>
-                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Nilai</th>
-                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Status</th>
-                    <th className="pb-3 text-right font-bold text-slate-500">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {channels.rows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="py-3 pr-4 font-medium text-slate-500">{row.id}</td>
-                      <td className="py-3 pr-4 font-semibold text-slate-950">{row.name}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-600">{row.type}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-600">{row.original}</td>
-                      <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.orders)}</td>
-                      <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatRupiah(row.value)}</td>
-                      <td className="py-3 pr-4 text-right">
-                        <StatusBadge label={row.status} />
-                      </td>
-                      <td className="py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button type="button" onClick={() => setEditingChannel(row)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600 hover:border-brand-red/40 hover:text-brand-red">Edit</button>
-                          <button type="button" onClick={() => deleteChannel(row.id)} className="rounded-lg border border-red-100 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50">Hapus</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <TablePagination
-              page={channels.page}
-              totalPages={channels.totalPages}
-              pageSize={channels.pageSize}
-              total={channels.total}
-              onPage={channels.setPage}
-              onPageSize={channels.setPageSize}
-            />
-          </>
-        )}
+            </>
+          }
+          renderActions={(row) => (
+            <>
+              <RowActionButton label="Edit" onClick={() => setEditingChannel(row)} />
+              <RowActionButton label="Hapus" danger onClick={() => deleteChannel(row.id)} />
+            </>
+          )}
+        />
       </DataPanel>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <DataPanel title="Daftar Mitra" subtitle="Mitra penjualan dicatat terpisah dari channel." className="lg:col-span-2">
-          {mitra.loading && <p className="py-8 text-center text-sm font-medium text-slate-400">Memuat data…</p>}
-          {mitra.error && (
-            <p className="py-8 text-center text-sm font-medium text-amber-600">
-              Data belum tersedia. Jalankan export data terlebih dahulu.
-            </p>
-          )}
-          {!mitra.loading && !mitra.error && (
-            <>
-              <TableToolbar
-                query={mitra.query}
-                onQuery={mitra.setQuery}
-                placeholder="Cari mitra…"
-                total={mitra.total}
-                totalAll={mitra.totalAll}
-                onReset={mitra.resetControls}
-                hasActive={mitra.hasActiveControls}
-              >
+          <MasterTable
+            paged={mitra}
+            columns={mitraColumns}
+            rowKey={(row) => row.id}
+            searchPlaceholder="Cari mitra…"
+            minWidth={700}
+            maxHeight={420}
+            toolbar={
+              <>
                 <ToolbarSelect
                   value={mitra.filters.status ?? ""}
                   onChange={(v) => mitra.setFilter("status", v)}
@@ -230,80 +204,35 @@ export function ChannelSection() {
                     { value: "name:asc", label: "Mitra A-Z" },
                   ]}
                 />
-              </TableToolbar>
-              {mitra.total === 0 && (
-                <p className="py-6 text-center text-sm font-medium text-slate-400">
-                  Tidak ada data yang cocok dengan pencarian/filter.
-                </p>
-              )}
-              <div className="max-h-[420px] overflow-auto">
-                <table className="w-full min-w-[700px] text-sm">
-                  <thead className="sticky top-0 z-10 bg-white">
-                    <tr className="border-b border-slate-200">
-                      <th className="pb-3 pr-4 text-left font-bold text-slate-500">ID</th>
-                      <th className="pb-3 pr-4 text-left font-bold text-slate-500">Mitra</th>
-                      <th className="pb-3 pr-4 text-left font-bold text-slate-500">Nama Asli</th>
-                      <th className="pb-3 pr-4 text-right font-bold text-slate-500">Pesanan</th>
-                      <th className="pb-3 pr-4 text-right font-bold text-slate-500">Nilai</th>
-                      <th className="pb-3 pr-4 text-right font-bold text-slate-500">Status</th>
-                      <th className="pb-3 text-right font-bold text-slate-500">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {mitra.rows.map((row) => (
-                      <tr key={row.id}>
-                        <td className="py-3 pr-4 font-medium text-slate-500">{row.id}</td>
-                        <td className="py-3 pr-4 font-semibold text-slate-950">{row.name}</td>
-                        <td className="py-3 pr-4 font-medium text-slate-600">{row.original}</td>
-                        <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.orders)}</td>
-                        <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatRupiah(row.value)}</td>
-                        <td className="py-3 pr-4 text-right">
-                          <StatusBadge label={row.status} />
-                        </td>
-                        <td className="py-3 text-right">
-                          <div className="flex justify-end gap-2">
-                            <button type="button" onClick={() => setEditingMitra(row)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600 hover:border-brand-red/40 hover:text-brand-red">Edit</button>
-                            <button type="button" onClick={() => deleteMitra(row.id)} className="rounded-lg border border-red-100 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50">Hapus</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <TablePagination
-                page={mitra.page}
-                totalPages={mitra.totalPages}
-                pageSize={mitra.pageSize}
-                total={mitra.total}
-                onPage={mitra.setPage}
-                onPageSize={mitra.setPageSize}
-              />
-            </>
-          )}
+              </>
+            }
+            renderActions={(row) => (
+              <>
+                <RowActionButton label="Edit" onClick={() => setEditingMitra(row)} />
+                <RowActionButton label="Hapus" danger onClick={() => deleteMitra(row.id)} />
+              </>
+            )}
+          />
         </DataPanel>
 
-        <DataPanel title="Divisi Tim" subtitle="Tim internal yang mengerjakan order.">
-          <ul className="flex flex-col divide-y divide-slate-100">
-            {divisiRows.map((row) => (
-              <li key={row.name} className="flex items-center justify-between py-3 text-sm">
-                <span className="font-semibold text-slate-950">{row.name}</span>
-                <span className="font-medium text-slate-600">{row.orders} pesanan</span>
-              </li>
-            ))}
-          </ul>
+        <DataPanel title="Divisi Tim" subtitle="Jumlah pesanan yang dikerjakan tiap divisi.">
+          {divisiRows.length === 0 ? (
+            <p className="py-6 text-center text-sm font-medium text-slate-400">Memuat data…</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-slate-100">
+              {divisiRows.map((row) => (
+                <li key={row.name} className="flex items-center justify-between py-3 text-sm">
+                  <span className="font-semibold text-slate-950">{row.name}</span>
+                  <span className="font-medium text-slate-600">{formatNumber(row.orders)} pesanan</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </DataPanel>
       </div>
 
       <DataPanel title="Catatan Channel">
-        <ul className="flex flex-col gap-3">
-          {notes.map((note) => (
-            <li key={note} className="flex items-start gap-2.5 text-sm font-medium text-slate-600">
-              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-brand-red" />
-              {note}
-            </li>
-          ))}
-        </ul>
+        <NotesList notes={notes} />
       </DataPanel>
 
       {editingChannel && (

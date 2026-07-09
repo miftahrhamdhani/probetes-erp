@@ -1,5 +1,5 @@
 import { cn } from "@/lib/cn";
-import type { KpiItem } from "../types/databaseOverview.types";
+import type { KpiItem } from "../types/database.types";
 
 const toneClass: Record<NonNullable<KpiItem["tone"]>, string> = {
   red: "bg-brand-red/10 text-brand-red ring-brand-red/15",

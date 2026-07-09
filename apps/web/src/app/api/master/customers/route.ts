@@ -54,7 +54,7 @@ const SQL = `
   LEFT JOIN dominant_channel dc ON dc.customer_id = cu.customer_id
   LEFT JOIN master.channels ch ON ch.channel_id = dc.channel_id
   LEFT JOIN master.customer_cohorts cc ON cc.customer_id = cu.customer_id
-  ORDER BY cu.customer_id
+  ORDER BY length(cu.customer_id), cu.customer_id
 `;
 
 export async function GET() {

@@ -130,6 +130,11 @@ CREATE TABLE orders.orders (
     flag            TEXT
 );
 
+-- Index penunjang query API (dominant_channel per pelanggan, join channel/CS).
+CREATE INDEX idx_orders_customer_id ON orders.orders(customer_id);
+CREATE INDEX idx_orders_channel_id  ON orders.orders(channel_id);
+CREATE INDEX idx_orders_order_date  ON orders.orders(order_date);
+
 CREATE TABLE orders.order_items (
     order_item_id          TEXT PRIMARY KEY,
     order_id               TEXT REFERENCES orders.orders(order_id),

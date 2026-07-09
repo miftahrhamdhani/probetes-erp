@@ -1,18 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { DataPanel } from "@/features/database/overview/components/DataPanel";
-import { KpiCard } from "@/features/database/overview/components/KpiCard";
-import { StatusBadge } from "@/features/database/overview/components/StatusBadge";
-import type { StatusTone } from "@/features/database/overview/types/databaseOverview.types";
+import { useMemo, useState } from "react";
+import { DataPanel } from "@/features/database/components/DataPanel";
+import { KpiCard } from "@/features/database/components/KpiCard";
+import { StatusBadge } from "@/features/database/components/StatusBadge";
+import type { StatusTone } from "@/features/database/types/database.types";
 import { usePagedData } from "../../hooks/usePagedData";
-import { useRowVirtualizer } from "../../hooks/useRowVirtualizer";
 import { formatNumber, formatRupiah } from "../../lib/format";
 import { EditRecordModal, type EditField } from "../EditRecordModal";
-import { TablePagination } from "../TablePagination";
-import { DateRangeFilter, TableToolbar, ToolbarSelect } from "../TableToolbar";
+import { MasterTable, NotesList, RowActionButton, type MasterColumn } from "../MasterTable";
+import { DateRangeFilter, ToolbarSelect } from "../TableToolbar";
 
 interface CohortSummaryRow {
+  id: string;
   wa: string;
   name: string;
   cohort: string;
@@ -25,6 +25,7 @@ interface CohortSummaryRow {
 }
 
 interface CohortTxRow {
+  rowId: number;
   date: string;
   trx: string;
   wa: string;
@@ -36,13 +37,6 @@ interface CohortTxRow {
   cohort: string;
 }
 
-const kpiItems = [
-  { label: "Transaksi Tercatat", value: "18.215", detail: "Setelah digabung", tone: "blue" as const },
-  { label: "Pelanggan Terdata", value: "21.603", detail: "Punya riwayat", tone: "slate" as const },
-  { label: "Pelanggan Repeat", value: "4.428", detail: "Beli ulang", tone: "green" as const },
-  { label: "Bernilai Tinggi", value: "63", detail: "High Value", tone: "green" as const },
-];
-
 const clusterTone: Record<string, StatusTone> = {
   Baru: "blue",
   Repeat: "green",
@@ -51,15 +45,18 @@ const clusterTone: Record<string, StatusTone> = {
 };
 
 const notes = [
-  "No. WA dipakai sebagai ID pelanggan cohort, sesuai data asli (kolom User ID di data lama adalah nomor WA).",
+  "No. WA dipakai sebagai identitas pelanggan cohort, sesuai data asli (kolom User ID di data lama adalah nomor WA). Pelanggan tanpa No HP tampil \"-\" tapi tetap dibedakan lewat ID Customer.",
   "Belanja beberapa produk sekali checkout = 1 transaksi — baris dengan ID Transaksi sama adalah satu belanjaan.",
   "Frekuensi Trx = berapa kali pelanggan belanja (bukan jumlah barang; jumlah barang ada di Total Qty).",
   "Cluster membantu CS menentukan siapa yang perlu di-follow-up atau diarahkan ke konsultasi WA grup.",
   "Ringkasan Customer Cohort punya 2 tanggal: Beli Awal (transaksi pertama, jadi patokan filter) dan Beli Akhir (transaksi terakhir, info saja). Riwayat Transaksi punya 1 tanggal per baris karena tiap baris memang 1 transaksi.",
+  "Frekuensi dan Total Beli di ringkasan dihitung dari data pesanan operasional (sumber utama), sedangkan tabel Riwayat menampilkan transaksi closing CRM — jadi jumlah baris riwayat seorang pelanggan bisa berbeda dengan angka Frekuensi di ringkasannya.",
+  "Angka Repeat di sini dihitung dari cluster cohort — bisa sedikit lebih besar daripada menu Pelanggan karena pelanggan berstatus Perlu Dicek tetap punya cluster.",
 ];
 
 const summaryEditFields: EditField<CohortSummaryRow>[] = [
-  { key: "wa", label: "No. WA (ID)", readOnly: true },
+  { key: "id", label: "ID Customer", readOnly: true },
+  { key: "wa", label: "No. WA", readOnly: true },
   { key: "name", label: "Nama" },
   { key: "cohort", label: "Cohort" },
   { key: "first", label: "Beli Awal" },
@@ -85,41 +82,70 @@ const riwayatEditFields: EditField<CohortTxRow>[] = [
 export function CohortSection() {
   const [editingSummary, setEditingSummary] = useState<CohortSummaryRow | null>(null);
   const [editingRiwayat, setEditingRiwayat] = useState<CohortTxRow | null>(null);
-  const summary = usePagedData<CohortSummaryRow>("/api/master/cohort-summary", ["wa", "name"]);
+  const summary = usePagedData<CohortSummaryRow>("/api/master/cohort-summary", ["id", "wa", "name"]);
   const riwayat = usePagedData<CohortTxRow>("/api/master/cohort-riwayat", ["wa", "name", "product", "trx"]);
-  const {
-    dateFrom: summaryDateFrom, setDateFrom: setSummaryDateFrom,
-    dateTo: summaryDateTo, setDateTo: setSummaryDateTo,
-  } = summary;
-  const {
-    dateFrom: riwayatDateFrom, setDateFrom: setRiwayatDateFrom,
-    dateTo: riwayatDateTo, setDateTo: setRiwayatDateTo,
-  } = riwayat;
 
+  // KPI dihitung dari data yang sama dengan tabel — tidak ada angka mati.
+  const kpiItems = useMemo(() => {
+    const byCluster = (cluster: string) => summary.allRows.filter((row) => row.cluster === cluster).length;
+    const distinctTrx = new Set(riwayat.allRows.map((row) => row.trx)).size;
+    return [
+      { label: "Transaksi Tercatat", value: formatNumber(distinctTrx), detail: "Setelah digabung", tone: "blue" as const },
+      { label: "Pelanggan Terdata", value: formatNumber(summary.allRows.length), detail: "Punya riwayat", tone: "slate" as const },
+      { label: "Pelanggan Repeat", value: formatNumber(byCluster("Repeat")), detail: "Cluster repeat", tone: "green" as const },
+      { label: "Bernilai Tinggi", value: formatNumber(byCluster("High Value")), detail: "High Value", tone: "green" as const },
+    ];
+  }, [summary.allRows, riwayat.allRows]);
+
+  // Kunci edit/hapus: id (customer_id) untuk ringkasan, rowId untuk riwayat.
+  // JANGAN pakai No. WA / ID Transaksi — keduanya tidak unik ("-" bersama,
+  // baris bundling berbagi TRX id).
   const saveSummary = (updated: CohortSummaryRow) => {
-    summary.updateRows((current) => current.map((row) => (row.wa === updated.wa ? updated : row)));
+    summary.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
     setEditingSummary(null);
   };
-  const deleteSummary = (wa: string) => {
+  const deleteSummary = (id: string) => {
     if (!window.confirm("Hapus data cohort pelanggan ini dari tampilan sementara?")) return;
-    summary.updateRows((current) => current.filter((row) => row.wa !== wa));
+    summary.updateRows((current) => current.filter((row) => row.id !== id));
   };
   const saveRiwayat = (updated: CohortTxRow) => {
-    riwayat.updateRows((current) =>
-      current.map((row) => (row.trx === updated.trx && row.wa === updated.wa ? updated : row)),
-    );
+    riwayat.updateRows((current) => current.map((row) => (row.rowId === updated.rowId ? updated : row)));
     setEditingRiwayat(null);
   };
-  const deleteRiwayat = (trx: string, wa: string) => {
+  const deleteRiwayat = (rowId: number) => {
     if (!window.confirm("Hapus baris transaksi ini dari tampilan sementara?")) return;
-    riwayat.updateRows((current) => current.filter((row) => !(row.trx === trx && row.wa === wa)));
+    riwayat.updateRows((current) => current.filter((row) => row.rowId !== rowId));
   };
 
-  const ROW_HEIGHT = 45;
-  const summaryVirt = useRowVirtualizer<HTMLDivElement>({ count: summary.rows.length, rowHeight: ROW_HEIGHT });
-  const visibleSummary = summary.rows.slice(summaryVirt.start, summaryVirt.end);
-  const riwayatVirt = useRowVirtualizer<HTMLDivElement>({ count: riwayat.rows.length, rowHeight: ROW_HEIGHT });
-  const visibleRiwayat = riwayat.rows.slice(riwayatVirt.start, riwayatVirt.end);
+  const summaryColumns: MasterColumn<CohortSummaryRow>[] = [
+    { key: "first", label: "Beli Awal", tone: "muted" },
+    { key: "last", label: "Beli Akhir", tone: "muted" },
+    { key: "id", label: "ID Customer", tone: "muted" },
+    { key: "wa", label: "No. WA", tone: "muted" },
+    { key: "name", label: "Nama", tone: "strong" },
+    { key: "cohort", label: "Cohort" },
+    { key: "freq", label: "Frekuensi Trx", align: "right", tone: "strong", render: (row) => `${formatNumber(row.freq)}x` },
+    { key: "qty", label: "Total Qty", align: "right", render: (row) => formatNumber(row.qty) },
+    { key: "total", label: "Total Beli", align: "right", tone: "strong", render: (row) => formatRupiah(row.total) },
+    {
+      key: "cluster",
+      label: "Cluster",
+      align: "right",
+      render: (row) => <StatusBadge label={row.cluster} tone={clusterTone[row.cluster]} />,
+    },
+  ];
+
+  const riwayatColumns: MasterColumn<CohortTxRow>[] = [
+    { key: "date", label: "Tanggal", tone: "muted" },
+    { key: "trx", label: "ID Transaksi", tone: "muted" },
+    { key: "wa", label: "No. WA" },
+    { key: "name", label: "Customer", tone: "strong" },
+    { key: "cs", label: "CS" },
+    { key: "product", label: "Produk" },
+    { key: "qty", label: "Qty", align: "right", render: (row) => formatNumber(row.qty) },
+    { key: "total", label: "Total", align: "right", tone: "strong", render: (row) => formatRupiah(row.total) },
+    { key: "cohort", label: "Cohort" },
+  ];
 
   return (
     <div className="flex flex-col gap-6">
@@ -130,23 +156,15 @@ export function CohortSection() {
       </div>
 
       <DataPanel title="Ringkasan Customer Cohort" subtitle="Riwayat belanja tiap pelanggan dari waktu ke waktu.">
-        {summary.loading && <p className="py-8 text-center text-sm font-medium text-slate-400">Memuat data…</p>}
-        {summary.error && (
-          <p className="py-8 text-center text-sm font-medium text-amber-600">
-            Data belum tersedia. Jalankan export data terlebih dahulu.
-          </p>
-        )}
-        {!summary.loading && !summary.error && (
-          <>
-            <TableToolbar
-              query={summary.query}
-              onQuery={summary.setQuery}
-              placeholder="Cari nama atau No. WA…"
-              total={summary.total}
-              totalAll={summary.totalAll}
-              onReset={summary.resetControls}
-              hasActive={summary.hasActiveControls}
-            >
+        <MasterTable
+          paged={summary}
+          columns={summaryColumns}
+          rowKey={(row) => row.id}
+          searchPlaceholder="Cari nama, No. WA, ID customer…"
+          minWidth={1020}
+          virtualized
+          toolbar={
+            <>
               <ToolbarSelect
                 value={summary.filters.cluster ?? ""}
                 onChange={(v) => summary.setFilter("cluster", v)}
@@ -166,98 +184,32 @@ export function CohortSection() {
               />
               <DateRangeFilter
                 label="Beli Awal"
-                from={summaryDateFrom.first ?? ""}
-                to={summaryDateTo.first ?? ""}
-                onFrom={(v) => setSummaryDateFrom("first", v)}
-                onTo={(v) => setSummaryDateTo("first", v)}
+                from={summary.dateFrom.first ?? ""}
+                to={summary.dateTo.first ?? ""}
+                onFrom={(v) => summary.setDateFrom("first", v)}
+                onTo={(v) => summary.setDateTo("first", v)}
               />
-            </TableToolbar>
-            {summary.total === 0 && (
-              <p className="py-6 text-center text-sm font-medium text-slate-400">
-                Tidak ada data yang cocok dengan pencarian/filter.
-              </p>
-            )}
-            <div ref={summaryVirt.containerRef} className="max-h-[560px] overflow-auto">
-              <table className="w-full min-w-[900px] text-sm">
-                <thead className="sticky top-0 z-10 bg-white">
-                  <tr className="border-b border-slate-200">
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Beli Awal</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Beli Akhir</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">No. WA (ID)</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Nama</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Cohort</th>
-                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Frekuensi Trx</th>
-                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Total Qty</th>
-                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Total Beli</th>
-                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Cluster</th>
-                    <th className="pb-3 text-right font-bold text-slate-500">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {summaryVirt.topSpacer > 0 && (
-                    <tr aria-hidden="true" style={{ height: summaryVirt.topSpacer }}>
-                      <td colSpan={10} />
-                    </tr>
-                  )}
-                  {visibleSummary.map((row, index) => (
-                    <tr key={`${row.wa}-${summaryVirt.start + index}`}>
-                      <td className="py-3 pr-4 font-medium text-slate-500">{row.first}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-500">{row.last}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-500">{row.wa}</td>
-                      <td className="py-3 pr-4 font-semibold text-slate-950">{row.name}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-600">{row.cohort}</td>
-                      <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatNumber(row.freq)}x</td>
-                      <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.qty)}</td>
-                      <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatRupiah(row.total)}</td>
-                      <td className="py-3 pr-4 text-right">
-                        <StatusBadge label={row.cluster} tone={clusterTone[row.cluster]} />
-                      </td>
-                      <td className="py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button type="button" onClick={() => setEditingSummary(row)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600 hover:border-brand-red/40 hover:text-brand-red">Edit</button>
-                          <button type="button" onClick={() => deleteSummary(row.wa)} className="rounded-lg border border-red-100 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50">Hapus</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {summaryVirt.bottomSpacer > 0 && (
-                    <tr aria-hidden="true" style={{ height: summaryVirt.bottomSpacer }}>
-                      <td colSpan={10} />
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <TablePagination
-              page={summary.page}
-              totalPages={summary.totalPages}
-              pageSize={summary.pageSize}
-              total={summary.total}
-              onPage={summary.setPage}
-              onPageSize={summary.setPageSize}
-            />
-          </>
-        )}
+            </>
+          }
+          renderActions={(row) => (
+            <>
+              <RowActionButton label="Edit" onClick={() => setEditingSummary(row)} />
+              <RowActionButton label="Hapus" danger onClick={() => deleteSummary(row.id)} />
+            </>
+          )}
+        />
       </DataPanel>
 
       <DataPanel title="Riwayat Transaksi Cohort" subtitle="Catatan pembelian per tanggal, sesuai data asli.">
-        {riwayat.loading && <p className="py-8 text-center text-sm font-medium text-slate-400">Memuat data…</p>}
-        {riwayat.error && (
-          <p className="py-8 text-center text-sm font-medium text-amber-600">
-            Data belum tersedia. Jalankan export data terlebih dahulu.
-          </p>
-        )}
-        {!riwayat.loading && !riwayat.error && (
-          <>
-            <TableToolbar
-              query={riwayat.query}
-              onQuery={riwayat.setQuery}
-              placeholder="Cari nama, No. WA, produk, ID transaksi…"
-              total={riwayat.total}
-              totalAll={riwayat.totalAll}
-              onReset={riwayat.resetControls}
-              hasActive={riwayat.hasActiveControls}
-            >
+        <MasterTable
+          paged={riwayat}
+          columns={riwayatColumns}
+          rowKey={(row) => String(row.rowId)}
+          searchPlaceholder="Cari nama, No. WA, produk, ID transaksi…"
+          minWidth={900}
+          virtualized
+          toolbar={
+            <>
               <ToolbarSelect
                 value={riwayat.filters.product ?? ""}
                 onChange={(v) => riwayat.setFilter("product", v)}
@@ -276,87 +228,24 @@ export function CohortSection() {
               />
               <DateRangeFilter
                 label="Tanggal Transaksi"
-                from={riwayatDateFrom.date ?? ""}
-                to={riwayatDateTo.date ?? ""}
-                onFrom={(v) => setRiwayatDateFrom("date", v)}
-                onTo={(v) => setRiwayatDateTo("date", v)}
+                from={riwayat.dateFrom.date ?? ""}
+                to={riwayat.dateTo.date ?? ""}
+                onFrom={(v) => riwayat.setDateFrom("date", v)}
+                onTo={(v) => riwayat.setDateTo("date", v)}
               />
-            </TableToolbar>
-            {riwayat.total === 0 && (
-              <p className="py-6 text-center text-sm font-medium text-slate-400">
-                Tidak ada data yang cocok dengan pencarian/filter.
-              </p>
-            )}
-            <div ref={riwayatVirt.containerRef} className="max-h-[560px] overflow-auto">
-              <table className="w-full min-w-[900px] text-sm">
-                <thead className="sticky top-0 z-10 bg-white">
-                  <tr className="border-b border-slate-200">
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Tanggal</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">ID Transaksi</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">No. WA</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Customer</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">CS</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Produk</th>
-                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Qty</th>
-                    <th className="pb-3 pr-4 text-right font-bold text-slate-500">Total</th>
-                    <th className="pb-3 pr-4 text-left font-bold text-slate-500">Cohort</th>
-                    <th className="pb-3 text-right font-bold text-slate-500">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {riwayatVirt.topSpacer > 0 && (
-                    <tr aria-hidden="true" style={{ height: riwayatVirt.topSpacer }}>
-                      <td colSpan={10} />
-                    </tr>
-                  )}
-                  {visibleRiwayat.map((row, index) => (
-                    <tr key={`${row.trx}-${riwayatVirt.start + index}`}>
-                      <td className="py-3 pr-4 font-medium text-slate-500">{row.date}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-500">{row.trx}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-600">{row.wa}</td>
-                      <td className="py-3 pr-4 font-semibold text-slate-950">{row.name}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-600">{row.cs}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-600">{row.product}</td>
-                      <td className="py-3 pr-4 text-right font-medium text-slate-600">{formatNumber(row.qty)}</td>
-                      <td className="py-3 pr-4 text-right font-semibold text-slate-950">{formatRupiah(row.total)}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-600">{row.cohort}</td>
-                      <td className="py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button type="button" onClick={() => setEditingRiwayat(row)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600 hover:border-brand-red/40 hover:text-brand-red">Edit</button>
-                          <button type="button" onClick={() => deleteRiwayat(row.trx, row.wa)} className="rounded-lg border border-red-100 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50">Hapus</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {riwayatVirt.bottomSpacer > 0 && (
-                    <tr aria-hidden="true" style={{ height: riwayatVirt.bottomSpacer }}>
-                      <td colSpan={10} />
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <TablePagination
-              page={riwayat.page}
-              totalPages={riwayat.totalPages}
-              pageSize={riwayat.pageSize}
-              total={riwayat.total}
-              onPage={riwayat.setPage}
-              onPageSize={riwayat.setPageSize}
-            />
-          </>
-        )}
+            </>
+          }
+          renderActions={(row) => (
+            <>
+              <RowActionButton label="Edit" onClick={() => setEditingRiwayat(row)} />
+              <RowActionButton label="Hapus" danger onClick={() => deleteRiwayat(row.rowId)} />
+            </>
+          )}
+        />
       </DataPanel>
 
       <DataPanel title="Catatan Cohort">
-        <ul className="flex flex-col gap-3">
-          {notes.map((note) => (
-            <li key={note} className="flex items-start gap-2.5 text-sm font-medium text-slate-600">
-              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-brand-red" />
-              {note}
-            </li>
-          ))}
-        </ul>
+        <NotesList notes={notes} />
       </DataPanel>
 
       {editingSummary && (

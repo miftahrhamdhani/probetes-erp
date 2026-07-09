@@ -1,10 +1,12 @@
 import type { MasterDataMenu } from "../types/masterData.types";
 
+// Badge (jumlah data) TIDAK ditulis di sini — diisi MasterDataPage dari
+// /api/master/counts supaya angkanya selalu ikut database.
 export const masterDataMenus = [
-  { id: "pelanggan", title: "Pelanggan", badge: "21.603", icon: "users" },
-  { id: "cohort", title: "Database Cohort", badge: "20.332", icon: "history" },
-  { id: "produk", title: "Produk", badge: "94", icon: "package" },
-  { id: "channel", title: "Channel", badge: "5", icon: "globe" },
-  { id: "cs-tim", title: "CS / Tim", badge: "62", icon: "headphones" },
-  { id: "ekspedisi", title: "Ekspedisi", badge: "22", icon: "truck" },
+  { id: "pelanggan", title: "Pelanggan", icon: "users" },
+  { id: "cohort", title: "Database Cohort", icon: "history" },
+  { id: "produk", title: "Produk", icon: "package" },
+  { id: "channel", title: "Channel", icon: "globe" },
+  { id: "cs-tim", title: "CS / Tim", icon: "headphones" },
+  { id: "ekspedisi", title: "Ekspedisi", icon: "truck" },
 ] satisfies MasterDataMenu[];

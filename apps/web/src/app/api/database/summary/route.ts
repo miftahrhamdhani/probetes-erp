@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { HP_TIDAK_NORMAL_WHERE, KOTA_KOSONG_WHERE, NAMA_BERMASALAH_WHERE } from "@/lib/quality-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -38,12 +39,9 @@ const HEALTH_SQL = `
   SELECT
     (SELECT count(*) FROM master.products WHERE NULLIF(category,'') IS NULL) AS produk_tanpa_kategori,
     (SELECT count(*) FROM master.products WHERE status = 'review')           AS produk_nama_review,
-    (SELECT count(*) FROM master.customers
-       WHERE name IS NULL OR trim(name) = '' OR length(trim(name)) <= 3 OR upper(name) LIKE '%ERROR%') AS nama_bermasalah,
-    (SELECT count(*) FROM master.customers
-       WHERE NULLIF(address,'') IS NOT NULL AND NULLIF(city,'') IS NULL)      AS kota_kosong,
-    (SELECT count(*) FROM master.customers
-       WHERE NULLIF(phone_normalized,'') IS NOT NULL AND phone_normalized !~ '^62[0-9]{8,13}$') AS hp_tidak_normal,
+    (SELECT count(*) FROM master.customers WHERE ${NAMA_BERMASALAH_WHERE})    AS nama_bermasalah,
+    (SELECT count(*) FROM master.customers WHERE ${KOTA_KOSONG_WHERE})        AS kota_kosong,
+    (SELECT count(*) FROM master.customers WHERE ${HP_TIDAK_NORMAL_WHERE})    AS hp_tidak_normal,
     (SELECT count(*) FROM master.customers cu
        WHERE NOT EXISTS (
          SELECT 1 FROM orders.orders o WHERE o.customer_id = cu.customer_id AND o.channel_id IS NOT NULL

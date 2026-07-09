@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { pool, query } from "@/lib/db";
-import { workbookToXlsx } from "@/lib/xlsx";
+import { workbookToExcelXml } from "@/lib/excel";
 
 export const dynamic = "force-dynamic";
 
@@ -163,7 +163,9 @@ function withRange(sheet: SheetConfig, dateFrom: string | null, dateTo: string |
   const conds: string[] = [];
   if (dateFrom) conds.push(`${column} >= '${dateFrom}'`);
   if (dateTo) conds.push(`${column} <= '${dateTo}'`);
-  return `SELECT * FROM (${base}) backup_sheet WHERE ${conds.join(" AND ")}`;
+  // Baris tanpa tanggal (mis. data tracking yang order-nya tidak ketemu) tetap
+  // ikut dicadangkan — lebih aman kelebihan data daripada diam-diam hilang.
+  return `SELECT * FROM (${base}) backup_sheet WHERE (${column} IS NULL OR (${conds.join(" AND ")}))`;
 }
 
 export async function POST(req: NextRequest) {
@@ -219,7 +221,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const workbook = workbookToXlsx(sheets, "Cadangan Database Probetes ERP");
+    const workbook = workbookToExcelXml(sheets, "Cadangan Database Probetes ERP");
     await fs.writeFile(path.join(targetFolder, BACKUP_FILE), workbook);
 
     await pool.query(

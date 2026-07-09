@@ -3,10 +3,14 @@ import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-// wa = No. WA ditampilkan penuh sebagai ID (di-lokalkan 62->0), bukan dimasking.
+// wa = No. WA ditampilkan penuh (di-lokalkan 62->0), bukan dimasking.
+// id = customer_id, dipakai frontend sebagai kunci edit/hapus — WA tidak unik
+// (2.183 pelanggan tanpa HP tampil sebagai "-"). Urutan pakai length+id agar
+// PB-CUST-2 tampil sebelum PB-CUST-10 (ID tidak di-padding).
 // Tanggal diformat YYYY-MM-DD agar sama dengan JSON lama.
 const SQL = `
   SELECT
+    co.customer_id AS id,
     CASE
       WHEN cu.phone_normalized IS NULL OR cu.phone_normalized = '' THEN '-'
       WHEN cu.phone_normalized LIKE '62%' THEN '0' || substring(cu.phone_normalized from 3)
@@ -28,7 +32,7 @@ const SQL = `
     END AS cluster
   FROM master.customer_cohorts co
   JOIN master.customers cu ON cu.customer_id = co.customer_id
-  ORDER BY co.customer_id
+  ORDER BY length(co.customer_id), co.customer_id
 `;
 
 export async function GET() {

@@ -15,6 +15,9 @@ export function usePagedData<T extends object>(
 ) {
   const [allRows, setAllRows] = useState<T[] | null>(null);
   const [error, setError] = useState(false);
+  // true setelah user mengubah/menghapus baris lewat updateRows — dipakai UI
+  // untuk mengingatkan bahwa perubahan hanya tampilan, belum ke database.
+  const [modified, setModified] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState(initialPageSize);
   const [query, setQueryState] = useState("");
@@ -133,6 +136,7 @@ export function usePagedData<T extends object>(
   };
   const updateRows = (updater: (rows: T[]) => T[]) => {
     setAllRows((current) => (current ? updater(current) : current));
+    setModified(true);
     setPage(1);
   };
   const hasActiveControls = Boolean(
@@ -149,10 +153,12 @@ export function usePagedData<T extends object>(
 
   return {
     rows,
+    allRows: allRows ?? [],
     total,
     totalAll,
     loading: allRows === null && !error,
     error,
+    modified,
     page: safePage,
     setPage,
     pageSize,
@@ -174,3 +180,6 @@ export function usePagedData<T extends object>(
     distinct,
   };
 }
+
+/** Bentuk hasil usePagedData — dipakai komponen tabel bersama (MasterTable). */
+export type PagedData<T extends object> = ReturnType<typeof usePagedData<T>>;

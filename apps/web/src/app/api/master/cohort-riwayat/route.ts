@@ -4,9 +4,11 @@ import { query } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 // Riwayat transaksi cohort: nama & WA dari customers, CS dari users, produk dari products.
-// row_id menjaga urutan sesuai file asli.
+// row_id menjaga urutan sesuai file asli DAN dikirim ke frontend sebagai kunci
+// edit/hapus — transaction_id TIDAK unik (baris bundling berbagi TRX id).
 const SQL = `
   SELECT
+    t.row_id AS "rowId",
     COALESCE(to_char(t.transaction_date, 'YYYY-MM-DD'), '-') AS date,
     t.transaction_id AS trx,
     CASE

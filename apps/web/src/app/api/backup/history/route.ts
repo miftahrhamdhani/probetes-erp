@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { workbookToXlsx, type Sheet } from "@/lib/xlsx";
+import { workbookToExcelXml, type Sheet } from "@/lib/excel";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +94,7 @@ async function buildExcelFromLegacyCsv(folderPath: string): Promise<Buffer> {
       rows: csv ? parseCsv(csv) : [],
     });
   }
-  const workbook = workbookToXlsx(sheets, "Cadangan Database Probetes ERP");
+  const workbook = workbookToExcelXml(sheets, "Cadangan Database Probetes ERP");
   await fs.writeFile(path.join(folderPath, BACKUP_FILE), workbook).catch(() => undefined);
   return workbook;
 }

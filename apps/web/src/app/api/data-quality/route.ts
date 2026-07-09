@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { extractCityFromAddress } from "@/lib/location";
+import {
+  HP_ADA,
+  HP_DIGITS,
+  HP_RAW,
+  HP_TIDAK_NORMAL_WHERE,
+  KOTA_KOSONG_WHERE,
+  NAMA_BERMASALAH_WHERE,
+} from "@/lib/quality-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -65,10 +73,9 @@ const PELANGGAN_SQL = `
       WHEN upper(cu.name) LIKE '%ERROR%' THEN 'Nama tidak terbaca'
       ELSE 'Nama terlalu pendek'
     END AS issue
-  FROM master.customers cu
+  FROM (SELECT * FROM master.customers WHERE ${NAMA_BERMASALAH_WHERE}) cu
   LEFT JOIN dominant_channel dc ON dc.customer_id = cu.customer_id
   LEFT JOIN master.channels ch ON ch.channel_id = dc.channel_id
-  WHERE cu.name IS NULL OR trim(cu.name) = '' OR length(trim(cu.name)) <= 3 OR upper(cu.name) LIKE '%ERROR%'
   ORDER BY cu.customer_id
 `;
 
@@ -78,15 +85,15 @@ const HP_SQL = `
     SELECT
       customer_id,
       COALESCE(NULLIF(name, ''), '-') AS name,
-      COALESCE(NULLIF(phone_normalized, ''), NULLIF(phone, ''), '-') AS phone,
-      regexp_replace(COALESCE(NULLIF(phone_normalized, ''), NULLIF(phone, ''), ''), '[^0-9]', '', 'g') AS digits
+      ${HP_RAW} AS raw,
+      ${HP_DIGITS} AS digits
     FROM master.customers
-    WHERE COALESCE(NULLIF(phone_normalized, ''), NULLIF(phone, ''), '') <> ''
+    WHERE ${HP_ADA}
   )
   SELECT
-    customer_id AS id, name, phone, length(digits) AS length,
+    customer_id AS id, name, raw AS phone, length(digits) AS length,
     CASE
-      WHEN digits !~ '^[0-9]+$' THEN 'Berisi karakter selain angka'
+      WHEN raw !~ '^[0-9+ ()-]*$' THEN 'Berisi karakter selain angka'
       WHEN digits NOT LIKE '62%' THEN 'Tidak diawali 62'
       WHEN length(digits) < 10 THEN 'Nomor terlalu pendek'
       WHEN length(digits) > 15 THEN 'Nomor terlalu panjang'
@@ -106,7 +113,7 @@ const KOTA_SQL = `
     COALESCE(NULLIF(province, ''), '-') AS province,
     'Kota belum terbaca dari alamat' AS issue
   FROM master.customers
-  WHERE NULLIF(address, '') IS NOT NULL AND NULLIF(city, '') IS NULL
+  WHERE ${KOTA_KOSONG_WHERE}
   ORDER BY customer_id
 `;
 
@@ -121,14 +128,9 @@ const sectionSql: Record<SectionId, string> = {
 const countSql: Record<SectionId, string> = {
   "produk-nama": `SELECT count(*)::int AS count FROM master.products WHERE status = 'review'`,
   "produk-kategori": `SELECT count(*)::int AS count FROM master.products WHERE NULLIF(category,'') IS NULL`,
-  pelanggan: `SELECT count(*)::int AS count FROM master.customers
-    WHERE name IS NULL OR trim(name) = '' OR length(trim(name)) <= 3 OR upper(name) LIKE '%ERROR%'`,
-  hp: `WITH phones AS (
-      SELECT regexp_replace(COALESCE(NULLIF(phone_normalized,''),NULLIF(phone,''),''),'[^0-9]','','g') AS digits
-      FROM master.customers WHERE COALESCE(NULLIF(phone_normalized,''),NULLIF(phone,''),'') <> ''
-    ) SELECT count(*)::int AS count FROM phones WHERE digits !~ '^62[0-9]{8,13}$'`,
-  kota: `SELECT count(*)::int AS count FROM master.customers
-    WHERE NULLIF(address,'') IS NOT NULL AND NULLIF(city,'') IS NULL`,
+  pelanggan: `SELECT count(*)::int AS count FROM master.customers WHERE ${NAMA_BERMASALAH_WHERE}`,
+  hp: `SELECT count(*)::int AS count FROM master.customers WHERE ${HP_TIDAK_NORMAL_WHERE}`,
+  kota: `SELECT count(*)::int AS count FROM master.customers WHERE ${KOTA_KOSONG_WHERE}`,
 };
 
 async function count(section: SectionId) {

@@ -75,7 +75,13 @@ function worksheet(sheet: Sheet, title: string, createdAt: string, used: Set<str
   </Worksheet>`;
 }
 
-export function workbookToXlsx(sheets: Sheet[], title: string): Buffer {
+/**
+ * Susun workbook Excel dalam format SpreadsheetML (XML) — disimpan sebagai .xls.
+ * Excel bisa membukanya langsung, tapi menampilkan peringatan format/ekstensi
+ * (wajar untuk format ini; tidak merusak data). Dipilih agar tidak perlu
+ * menambah library xlsx eksternal.
+ */
+export function workbookToExcelXml(sheets: Sheet[], title: string): Buffer {
   const used = new Set<string>();
   const createdAt = new Date().toLocaleString("id-ID");
   const xml = `<?xml version="1.0"?>

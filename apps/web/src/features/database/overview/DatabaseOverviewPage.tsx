@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { DatabaseBackButton } from "@/features/database/components/DatabaseBackButton";
+import { DataPanel } from "@/features/database/components/DataPanel";
+import { KpiCard } from "@/features/database/components/KpiCard";
+import type { KpiItem } from "@/features/database/types/database.types";
 import { formatNumber } from "@/features/database/master-data/lib/format";
-import { DataPanel } from "./components/DataPanel";
-import { KpiCard } from "./components/KpiCard";
-import type { KpiItem } from "./types/databaseOverview.types";
 
 interface SummaryData {
   core: {
