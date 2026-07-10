@@ -16,11 +16,10 @@ interface SimpleBarChartProps {
 
 export function SimpleBarChart({ data, formatValue = (v) => v.toLocaleString("id-ID"), height = 160 }: SimpleBarChartProps) {
   const max = Math.max(...data.map((d) => d.value), 1);
-  const barW = 100 / data.length;
 
   return (
     <div className="w-full overflow-x-auto">
-      <svg viewBox={`0 0 ${data.length * 60} ${height + 40}`} className="w-full" style={{ minWidth: data.length * 48 }}>
+      <svg viewBox={`0 0 ${data.length * 60} ${height + 40}`} className="w-full" style={{ minWidth: data.length * 48, maxHeight: height + 40 }}>
         {data.map((d, i) => {
           const barH = (d.value / max) * height;
           const x = i * 60 + 8;
@@ -74,7 +73,7 @@ export function SimpleLineChart({ data, color = "#E30613", formatValue = (v) => 
 
   return (
     <div className="w-full overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${height + 20}`} className="w-full">
+      <svg viewBox={`0 0 ${W} ${height + 20}`} className="w-full" style={{ maxHeight: height + 20 }}>
         <defs>
           <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity={0.15} />
@@ -137,5 +136,50 @@ export function DonutChart({ data, size = 140 }: DonutChartProps) {
       {/* hole */}
       <circle cx={cx} cy={cy} r={r * 0.52} fill="white" />
     </svg>
+  );
+}
+
+interface FunnelStage {
+  label: string;
+  value: number; // persen, 0-100
+}
+
+interface RetentionFunnelProps {
+  stages: FunnelStage[];
+  color?: string;
+  height?: number;
+}
+
+/** Funnel horizontal untuk retensi tonton video: tiap tahap = 1 bar, lebar sebanding
+ * dengan % retensi terhadap tahap pertama. Sequential 1 hue (opacity naik = tahap makin
+ * dalam) — bukan kategorikal, jadi tidak perlu divalidasi lewat validate_palette.js. */
+export function RetentionFunnel({ stages, color = "#E30613", height = 36 }: RetentionFunnelProps) {
+  if (!stages || stages.length === 0) return null;
+  const W = 480;
+  const labelW = 90;
+  const barAreaW = W - labelW - 50;
+  const gap = 10;
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${(height + gap) * stages.length}`} className="w-full" style={{ minWidth: 320 }}>
+        {stages.map((s, i) => {
+          const y = i * (height + gap);
+          const w = Math.max(2, (s.value / 100) * barAreaW);
+          const opacity = 0.35 + (i / Math.max(1, stages.length - 1)) * 0.65; // 0.35 -> 1.0, monoton
+          return (
+            <g key={i}>
+              <text x={labelW - 8} y={y + height / 2 + 4} textAnchor="end" fontSize={11} fontWeight={600} fill="#475569">
+                {s.label}
+              </text>
+              <rect x={labelW} y={y} width={w} height={height} rx={6} fill={color} opacity={opacity} />
+              <text x={labelW + w + 8} y={y + height / 2 + 4} fontSize={11} fontWeight={700} fill="#1e293b">
+                {s.value.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }

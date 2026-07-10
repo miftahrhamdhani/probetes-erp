@@ -15,9 +15,9 @@ const menus: MarketingMenu[] = [
   },
   {
     id: "sales",
-    title: "Laporan Penjualan",
-    description: "Performa penjualan, tren harian, dan breakdown produk per channel.",
-    href: "/marketing/laporan-penjualan",
+    title: "Sales & Order Center",
+    description: "Overview penjualan, performa produk/toko/CS, status pesanan, dan retur.",
+    href: "/marketing/sales-order",
     icon: "receipt",
   },
   {

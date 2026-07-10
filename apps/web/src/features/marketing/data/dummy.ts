@@ -110,6 +110,17 @@ export const adCampaigns: AdCampaign[] = [
   { advertiser: "Bella", kampanye: "RETARGETING WA", channel: "Meta", spend: 10_484_921, pembelian: 191, omzet: 41_600_000, roasFb: 1.38 },
   { advertiser: "Candra", kampanye: "PRP TOF - EXC", channel: "Meta", spend: 8_450_000, pembelian: 132, omzet: 33_120_000, roasFb: 1.55 },
   { advertiser: "Dea", kampanye: "SHOPEE ADS - SERUM", channel: "Shopee", spend: 6_200_000, pembelian: 88, omzet: 18_900_000, roasFb: 2.1 },
+  { advertiser: "Rian", kampanye: "GMV Max Produk Serum", channel: "TikTok Shop", spend: 9_800_000, pembelian: 210, omzet: 24_500_000, roasFb: 2.5 },
+  { advertiser: "Sari", kampanye: "NetSales Commission Reduction", channel: "TikTok Shop", spend: 4_300_000, pembelian: 95, omzet: 11_200_000, roasFb: 2.6 },
+];
+
+// Contoh baris video/materi iklan dengan data retensi tonton — bentuk kolomnya meniru
+// persis export asli Meta/TikTok, dipakai sebagai fallback saat belum ada Spending Ads
+// sungguhan yang diimport di sesi ini.
+export const videoRetentionDummy: Record<string, string>[] = [
+  { "Judul video": "Bunda sudah coba ini blom?? cobain deh bun", "Nama kampanye": "PRP TOF", "Jumlah yang dibelanjakan (IDR)": "5200000", "Nilai konversi pembelian": "15600000", "Rasio tayang video iklan 2 detik": "42", "Rasio tayang video iklan 25%": "38", "Rasio tayang video iklan 50%": "22", "Rasio tayang video iklan 75%": "12", "Rasio tayang video iklan 100%": "6" },
+  { "Judul video": "Siapa sih yang gak tau kapsul yacona", "Nama kampanye": "BID CAP", "Jumlah yang dibelanjakan (IDR)": "3100000", "Nilai konversi pembelian": "4200000", "Rasio tayang video iklan 2 detik": "18", "Rasio tayang video iklan 25%": "10", "Rasio tayang video iklan 50%": "4", "Rasio tayang video iklan 75%": "2", "Rasio tayang video iklan 100%": "1" },
+  { "Nama kampanye": "GMV Max Produk Proherbal 001", "Jumlah yang dibelanjakan (IDR)": "6400000", "Nilai konversi pembelian": "19800000", "Video Diputar hingga 25%": "45", "Video Diputar hingga 50%": "30", "Video Diputar hingga 75%": "19", "Video Diputar hingga 95%": "11" },
 ];
 
 // Spend iklan harian (contoh, single series).
