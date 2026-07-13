@@ -23,17 +23,16 @@ const menus: MarketingMenu[] = [
   {
     id: "ads",
     title: "Iklan & ROAS",
-    description: "Tracking spend vs omzet asli, ROAS per kampanye, tren harian.",
-    href: "/marketing/iklan-roas",
+    description: "Spending, sales, ROAS, ADV, campaign, dan toko untuk strategi iklan.",
+    href: "/marketing/ads-roas",
     icon: "megaphone",
   },
   {
     id: "crm",
-    title: "CRM (RFM & Cohort)",
-    description: "Input closingan, segmen RFM pelanggan, retensi cohort.",
+    title: "CRM",
+    description: "Pusat kerja CS/CRM: closingan, iklan CRM, RFM & cohort, cluster, dan follow-up.",
     href: "/marketing/crm",
     icon: "users",
-    badge: "Input Manual",
   },
 ];
 
