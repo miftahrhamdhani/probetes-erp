@@ -32,7 +32,7 @@ const SQL = `
     END AS cluster
   FROM master.customer_cohorts co
   JOIN master.customers cu ON cu.customer_id = co.customer_id
-  ORDER BY length(co.customer_id), co.customer_id
+  ORDER BY co.last_purchase_date DESC NULLS LAST, length(co.customer_id), co.customer_id
 `;
 
 export async function GET() {

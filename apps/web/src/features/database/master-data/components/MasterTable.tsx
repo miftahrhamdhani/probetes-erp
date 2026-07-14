@@ -35,6 +35,9 @@ interface MasterTableProps<T extends object> {
   toolbar?: ReactNode;
   /** Tombol per baris (Lihat/Edit/Hapus). Kalau diisi, kolom "Aksi" ditambahkan. */
   renderActions?: (row: T) => ReactNode;
+  /** Klik area data baris untuk membuka detail; area tombol Aksi dikecualikan. */
+  onRowClick?: (row: T) => void;
+  rowAriaLabel?: (row: T) => string;
   minWidth?: number;
   maxHeight?: number;
   /** Aktifkan virtualisasi baris untuk tabel ribuan baris (tinggi baris tetap). */
@@ -61,6 +64,8 @@ export function MasterTable<T extends object>({
   searchPlaceholder,
   toolbar,
   renderActions,
+  onRowClick,
+  rowAriaLabel,
   minWidth = 820,
   maxHeight = 560,
   virtualized = false,
@@ -139,7 +144,20 @@ export function MasterTable<T extends object>({
               </tr>
             )}
             {visibleRows.map((row, index) => (
-              <tr key={rowKey(row, start + index)}>
+              <tr
+                key={rowKey(row, start + index)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                onKeyDown={onRowClick ? (event) => {
+                  if (event.currentTarget !== event.target) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onRowClick(row);
+                  }
+                } : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                aria-label={onRowClick ? rowAriaLabel?.(row) : undefined}
+                className={onRowClick ? "cursor-pointer transition hover:bg-slate-50 focus:outline-none focus-visible:bg-red-50/50" : undefined}
+              >
                 {columns.map((col) => {
                   const plainValue = col.render ? null : String((row as Record<string, unknown>)[col.key] ?? "-");
                   return (
@@ -153,7 +171,7 @@ export function MasterTable<T extends object>({
                   );
                 })}
                 {renderActions && (
-                  <td className="py-3 text-right">
+                  <td className="py-3 text-right" onClick={(event) => event.stopPropagation()}>
                     <div className="flex justify-end gap-2">{renderActions(row)}</div>
                   </td>
                 )}

@@ -2,17 +2,50 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+interface PagedDataOptions<T extends object> {
+  initialPageSize?: number;
+  initialSort?: string;
+  dateKeys?: (keyof T)[];
+  tieBreakerKey?: keyof T;
+}
+
+/** Baca tanggal tanpa mengandalkan urutan alfabet atau locale browser. */
+function parseSortableDate(value: unknown): number | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.getTime();
+  const text = String(value ?? "").trim();
+  if (!text || text === "-") return null;
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/.exec(text);
+  if (iso) return Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+
+  const dayFirst = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(text);
+  if (dayFirst) return Date.UTC(Number(dayFirst[3]), Number(dayFirst[2]) - 1, Number(dayFirst[1]));
+
+  return null;
+}
+
+function comparePrimitive(a: unknown, b: unknown) {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a ?? "").localeCompare(String(b ?? ""), "id", { numeric: true });
+}
+
 /**
  * Muat data JSON + pencarian + filter + urutkan + pagination di sisi browser.
  * - `searchKeys`: kolom yang ikut dicari kotak pencarian.
  * - `sort` bernilai "kolom:asc" / "kolom:desc" ("" = urutan asli).
- * - pageSize 0 = tampilkan semua.
+ * - `options.initialSort` menetapkan urutan default dan saat tombol Reset ditekan.
+ * - `options.dateKeys` memastikan tanggal dibandingkan sebagai kalender lengkap.
  */
 export function usePagedData<T extends object>(
   url: string,
   searchKeys: (keyof T)[] = [],
-  initialPageSize = 10,
+  options: number | PagedDataOptions<T> = 10,
 ) {
+  const resolvedOptions = typeof options === "number" ? { initialPageSize: options } : options;
+  const initialPageSize = resolvedOptions.initialPageSize ?? 10;
+  const initialSort = resolvedOptions.initialSort ?? "";
+  const dateKeys = resolvedOptions.dateKeys ?? [];
+  const tieBreakerKey = resolvedOptions.tieBreakerKey;
   const [allRows, setAllRows] = useState<T[] | null>(null);
   const [error, setError] = useState(false);
   // true setelah user mengubah/menghapus baris lewat updateRows — dipakai UI
@@ -22,7 +55,7 @@ export function usePagedData<T extends object>(
   const [pageSize, setPageSizeState] = useState(initialPageSize);
   const [query, setQueryState] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [sort, setSortState] = useState("");
+  const [sort, setSortState] = useState(initialSort);
   // Filter rentang tanggal: { kolom: "YYYY-MM-DD" } untuk batas dari/sampai.
   // Kosong = tidak dibatasi. dateTo diperlakukan inklusif (sampai akhir hari itu).
   const [dateFrom, setDateFromState] = useState<Record<string, string>>({});
@@ -50,6 +83,7 @@ export function usePagedData<T extends object>(
   const reload = () => setReloadToken((value) => value + 1);
 
   const searchKeyId = searchKeys.join("|");
+  const dateKeyId = dateKeys.join("|");
 
   const filtered = useMemo(() => {
     if (!allRows) return [];
@@ -67,8 +101,8 @@ export function usePagedData<T extends object>(
     // (mis. semua tanggal transaksi seorang pelanggan). Untuk array, baris lolos
     // jika ADA SATU tanggal di dalamnya yang masuk rentang — bukan hanya kolom
     // tunggal seperti "pertama beli" saja.
-    const dateKeys = new Set([...Object.keys(dateFrom), ...Object.keys(dateTo)]);
-    for (const key of dateKeys) {
+    const filterDateKeys = new Set([...Object.keys(dateFrom), ...Object.keys(dateTo)]);
+    for (const key of filterDateKeys) {
       const from = dateFrom[key];
       const to = dateTo[key];
       if (!from && !to) continue;
@@ -80,19 +114,34 @@ export function usePagedData<T extends object>(
     }
     if (sort) {
       const [key, dir] = sort.split(":");
-      rows = [...rows].sort((a, b) => {
-        const av = a[key as keyof T];
-        const bv = b[key as keyof T];
-        const cmp =
-          typeof av === "number" && typeof bv === "number"
-            ? av - bv
-            : String(av ?? "").localeCompare(String(bv ?? ""), "id");
-        return dir === "asc" ? cmp : -cmp;
-      });
+      const isDateKey = dateKeys.some((dateKey) => String(dateKey) === key);
+      rows = rows.map((row, originalIndex) => ({ row, originalIndex })).sort((a, b) => {
+        const av = a.row[key as keyof T];
+        const bv = b.row[key as keyof T];
+        let cmp: number;
+        if (isDateKey) {
+          const aDate = parseSortableDate(av);
+          const bDate = parseSortableDate(bv);
+          // Tanggal kosong selalu di bawah, baik arah terbaru maupun terlama.
+          if (aDate === null && bDate === null) cmp = 0;
+          else if (aDate === null) return 1;
+          else if (bDate === null) return -1;
+          else cmp = aDate - bDate;
+        } else {
+          cmp = comparePrimitive(av, bv);
+        }
+
+        if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
+        if (tieBreakerKey) {
+          const tie = comparePrimitive(a.row[tieBreakerKey], b.row[tieBreakerKey]);
+          if (tie !== 0) return tie;
+        }
+        return a.originalIndex - b.originalIndex;
+      }).map(({ row }) => row);
     }
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, query, filters, dateFrom, dateTo, sort, searchKeyId]);
+  }, [allRows, query, filters, dateFrom, dateTo, sort, searchKeyId, dateKeyId, tieBreakerKey]);
 
   const total = filtered.length;
   const totalAll = allRows?.length ?? 0;
@@ -134,7 +183,7 @@ export function usePagedData<T extends object>(
     setFilters({});
     setDateFromState({});
     setDateToState({});
-    setSortState("");
+    setSortState(initialSort);
     setPage(1);
   };
   // persisted=true → perubahan sudah tersimpan ke database (lewat API), jadi
@@ -146,7 +195,7 @@ export function usePagedData<T extends object>(
     setPage(1);
   };
   const hasActiveControls = Boolean(
-    query || sort || Object.values(filters).some(Boolean) ||
+    query || sort !== initialSort || Object.values(filters).some(Boolean) ||
     Object.values(dateFrom).some(Boolean) || Object.values(dateTo).some(Boolean),
   );
 

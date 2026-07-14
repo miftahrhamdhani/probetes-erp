@@ -26,7 +26,7 @@ const SQL = `
   LEFT JOIN master.customers cu ON cu.customer_id = t.customer_id
   LEFT JOIN master.users us ON us.user_id = t.cs_id
   LEFT JOIN master.products pr ON pr.product_id = t.product_id
-  ORDER BY t.row_id
+  ORDER BY t.transaction_date DESC NULLS LAST, t.row_id DESC
 `;
 
 export async function GET() {

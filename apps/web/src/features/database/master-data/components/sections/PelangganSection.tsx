@@ -5,150 +5,129 @@ import { DataPanel } from "@/features/database/components/DataPanel";
 import { KpiCard } from "@/features/database/components/KpiCard";
 import { StatusBadge } from "@/features/database/components/StatusBadge";
 import type { StatusTone } from "@/features/database/types/database.types";
+import type { CustomerListItem } from "@/server/modules/master/customers/customers.types";
 import { usePagedData } from "../../hooks/usePagedData";
-import { formatNumber } from "../../lib/format";
+import { formatNumber, formatRupiah } from "../../lib/format";
 import { DetailRecordModal } from "../DetailRecordModal";
 import { EditRecordModal, type EditField } from "../EditRecordModal";
 import { MasterTable, NotesList, RowActionButton, type MasterColumn } from "../MasterTable";
 import { DateRangeFilter, ToolbarSelect } from "../TableToolbar";
 
-interface CustomerRow {
-  id: string;
-  name: string;
-  phone: string;
-  address: string;
-  city: string;
-  province: string;
-  source: string;
-  trx: number;
-  status: string;
-  firstPurchase: string;
-}
-
-interface MergePreview {
-  source: { customer_id: string; name: string | null; phone_normalized: string | null };
-  target: { customer_id: string; name: string | null; phone_normalized: string | null };
-  samePhone: boolean;
-  impact: { orders: number; transactions: number; shipments: number; returns: number };
-}
+type CustomerRow = CustomerListItem;
+type CustomerTab = "all" | "complete" | "validation";
 
 const statusTone: Record<string, StatusTone> = {
   Baru: "blue",
   Repeat: "green",
   "High Value": "purple",
   "Perlu Dicek": "amber",
+  Valid: "green",
+  Lengkap: "green",
+  "Belum Lengkap": "amber",
+  Tersensor: "red",
+  "Perlu Validasi": "amber",
+  "Potensi Duplikat": "purple",
+  "Belum Bisa Dipastikan": "slate",
 };
 
 const legendItems = [
-  { label: "Baru", description: "Baru sekali membeli." },
-  { label: "Repeat", description: "Sudah membeli lebih dari satu kali." },
-  { label: "High Value", description: "Total belanja besar (di atas Rp5 juta)." },
-  { label: "Perlu Dicek", description: "Data belum lengkap, misal tanpa No HP." },
+  { label: "Lengkap", description: "Nama, No. HP/WA, alamat, dan source dapat digunakan." },
+  { label: "Belum Lengkap", description: "Ada identitas wajib atau source yang belum tersedia." },
+  { label: "Tersensor", description: "Ada identitas yang masih disamarkan oleh sumber data." },
+  { label: "Potensi Duplikat", description: "Penanda untuk audit identitas dan riwayat pada data sumber." },
+  { label: "Belum Bisa Dipastikan", description: "Status pelanggan belum dipercaya karena identitas bermasalah." },
 ];
 
 const notes = [
-  "Pelanggan dikenali dari No HP, bukan nama — nama boleh beda, No HP sama tetap dihitung satu pelanggan.",
-  "Pelanggan tanpa No HP berasal dari marketplace; dibedakan lewat nama + alamat.",
-  "Channel Utama = channel penjualan (TikTok Shop, Shopee, Meta, Stokis, dst) yang paling sering dipakai pelanggan saat order. \"Belum Tercatat\" berarti channel tidak dicatat di data lama, bukan data hilang.",
-  "Provinsi dibaca otomatis dari alamat — pelanggan tanpa alamat (marketplace) provinsinya kosong dulu.",
-  "Frekuensi Trx = berapa kali pelanggan belanja; beli beberapa produk sekali checkout dihitung 1 transaksi (sama seperti di Database Cohort). Angka ini total sepanjang waktu, bukan per periode.",
-  "Tanggal (kolom paling kiri) = tanggal pelanggan ini pertama kali tercatat/transaksi, sama seperti kolom Tanggal di data lama. Bisa difilter untuk melihat pelanggan yang masuk pada bulan/tanggal tertentu.",
-  "Angka Repeat di sini dihitung dari status pelanggan. Di Database Cohort, Repeat dihitung dari cluster cohort — pelanggan berstatus Perlu Dicek tetap punya cluster, jadi angkanya bisa sedikit lebih besar di sana.",
+  "Status Baru, Repeat, atau High Value hanya ditampilkan bila identitas pelanggan lengkap dan tidak sedang perlu validasi.",
+  "Pelanggan tanpa No. HP/WA atau alamat tidak dianggap unik hanya berdasarkan nama dan alamat; datanya masuk antrean validasi.",
+  "Source pertama/terakhir berasal dari channel transaksi. Belum Tercatat berarti data lama belum memiliki pemetaan channel yang jelas.",
+  "Filter CRM hanya menampilkan source yang memang berlabel CRM; source lama tidak ditebak sebagai CRM.",
+  "Potensi duplikat hanya penanda untuk audit data sumber dan tidak menjalankan perubahan otomatis apa pun.",
+  "Transaksi Terakhir selalu menjadi kolom tanggal paling kiri dan dapat difilter per rentang tanggal.",
 ];
 
-// Hanya identitas inti yang bisa diedit. Channel/Frekuensi/Status/Tanggal adalah
-// hasil hitung dari transaksi, jadi read-only (tidak diubah manual di sini).
+// Identitas inti dapat diedit. Metrik transaksi, source, dan status hasil
+// penilaian backend tetap read-only supaya operator tidak mengubah hasil hitung.
 const editFields: EditField<CustomerRow>[] = [
   { key: "id", label: "ID", readOnly: true },
-  { key: "firstPurchase", label: "Tanggal", readOnly: true },
+  { key: "lastTransaction", label: "Transaksi Terakhir", readOnly: true },
   { key: "name", label: "Nama" },
-  { key: "phone", label: "No. HP" },
+  { key: "phone", label: "No. HP/WA" },
   { key: "address", label: "Alamat" },
   { key: "city", label: "Kota" },
   { key: "province", label: "Provinsi" },
-  { key: "source", label: "Channel Utama", readOnly: true },
-  { key: "trx", label: "Frekuensi Trx", type: "number", readOnly: true },
-  { key: "status", label: "Status", readOnly: true },
+  { key: "firstSource", label: "Sumber Pertama", readOnly: true },
+  { key: "lastSource", label: "Sumber Terakhir", readOnly: true },
+  { key: "platformChannel", label: "Platform / Channel", readOnly: true },
+  { key: "totalTransactions", label: "Total Transaksi", type: "number", readOnly: true },
+  { key: "totalPurchase", label: "Total Pembelian", type: "number", readOnly: true },
+  { key: "customerStatus", label: "Status Pelanggan", readOnly: true },
+  { key: "completenessStatus", label: "Status Kelengkapan", readOnly: true },
+  { key: "validationStatus", label: "Status Validasi", readOnly: true },
 ];
 
 export function PelangganSection() {
+  const [activeTab, setActiveTab] = useState<CustomerTab>("all");
   const [editingRow, setEditingRow] = useState<CustomerRow | null>(null);
   const [detailRow, setDetailRow] = useState<CustomerRow | null>(null);
-  const [mergeSource, setMergeSource] = useState<CustomerRow | null>(null);
-  const [mergeTargetId, setMergeTargetId] = useState("");
-  const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
-  const [mergeError, setMergeError] = useState("");
-  const [mergeBusy, setMergeBusy] = useState(false);
-  const [lastMergeId, setLastMergeId] = useState("");
-  const paged = usePagedData<CustomerRow>("/api/master/customers", ["id", "name", "phone", "city", "province"]);
-  const { allRows, filters, setFilter, dateFrom, setDateFrom, dateTo, setDateTo, sort, setSort, distinct, updateRows, reload } = paged;
+  const paged = usePagedData<CustomerRow>(
+    "/api/master/customers",
+    ["id", "name", "phone", "address", "city", "firstSource", "lastSource"],
+    {
+      initialSort: "lastTransaction:desc",
+      dateKeys: ["lastTransaction", "firstPurchase"],
+      tieBreakerKey: "id",
+    },
+  );
+  const {
+    allRows,
+    filters,
+    setFilter,
+    dateFrom,
+    setDateFrom,
+    dateTo,
+    setDateTo,
+    sort,
+    setSort,
+    distinct,
+    updateRows,
+    reload,
+  } = paged;
 
-  // KPI dihitung dari data yang sama dengan tabel — tidak ada angka mati.
-  const kpiItems = useMemo(() => {
-    const byStatus = (status: string) => allRows.filter((row) => row.status === status).length;
-    return [
-      { label: "Total Pelanggan", value: formatNumber(allRows.length), detail: "Terdata", tone: "green" as const },
-      { label: "Pelanggan Repeat", value: formatNumber(byStatus("Repeat")), detail: "Beli ulang", tone: "blue" as const },
-      { label: "Pelanggan Bernilai Tinggi", value: formatNumber(byStatus("High Value")), detail: "High Value", tone: "green" as const },
-      { label: "Perlu Dicek", value: formatNumber(byStatus("Perlu Dicek")), detail: "Data belum lengkap", tone: "amber" as const },
-    ];
-  }, [allRows]);
+  const summary = useMemo(() => ({
+    all: allRows.length,
+    complete: allRows.filter((row) => row.isComplete).length,
+    validation: allRows.filter((row) => row.needsValidation).length,
+    duplicate: allRows.filter((row) => row.isPotentialDuplicate).length,
+  }), [allRows]);
 
-  const loadMergePreview = async () => {
-    if (!mergeSource || !mergeTargetId) return;
-    setMergeBusy(true);
-    setMergeError("");
-    setMergePreview(null);
-    try {
-      const res = await fetch(`/api/master/customers/merge?sourceId=${encodeURIComponent(mergeSource.id)}&targetId=${encodeURIComponent(mergeTargetId)}`);
-      const data = (await res.json()) as MergePreview & { error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Gagal memuat pratinjau gabung.");
-      setMergePreview(data);
-    } catch (err) {
-      setMergeError(err instanceof Error ? err.message : "Gagal memuat pratinjau gabung.");
-    } finally {
-      setMergeBusy(false);
-    }
+  const kpiItems = useMemo(() => [
+    { label: "Total Pelanggan", value: formatNumber(summary.all), detail: "Semua data", tone: "blue" as const },
+    { label: "Data Lengkap", value: formatNumber(summary.complete), detail: "Siap digunakan", tone: "green" as const },
+    { label: "Perlu Validasi", value: formatNumber(summary.validation), detail: "Perlu ditindaklanjuti", tone: "amber" as const },
+    { label: "Potensi Duplikat", value: formatNumber(summary.duplicate), detail: "Perlu audit sumber", tone: "red" as const },
+  ], [summary]);
+
+  const tabs: Array<{ id: CustomerTab; label: string; count: number }> = [
+    { id: "all", label: "Semua Data", count: summary.all },
+    { id: "complete", label: "Data Lengkap", count: summary.complete },
+    { id: "validation", label: "Data Perlu Validasi", count: summary.validation },
+  ];
+
+  const selectTab = (tab: CustomerTab) => {
+    setActiveTab(tab);
+    setFilter("isComplete", tab === "complete" ? "true" : "");
+    setFilter("needsValidation", tab === "validation" ? "true" : "");
   };
 
-  const mergeCustomers = async () => {
-    if (!mergeSource || !mergePreview) return;
-    if (!window.confirm("Gabungkan pelanggan ini? Riwayat sumber akan dipindahkan ke pelanggan utama dan data sumber diarsipkan.")) return;
-    setMergeBusy(true);
-    try {
-      const res = await fetch("/api/master/customers/merge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceId: mergeSource.id, targetId: mergePreview.target.customer_id, confirmed: true }),
-      });
-      const data = (await res.json()) as { mergeId?: string; error?: string };
-      if (!res.ok || !data.mergeId) throw new Error(data.error ?? "Gagal menggabungkan pelanggan.");
-      setLastMergeId(data.mergeId);
-      setMergeSource(null);
-      setMergePreview(null);
-      setMergeTargetId("");
-      reload();
-    } catch (err) {
-      setMergeError(err instanceof Error ? err.message : "Gagal menggabungkan pelanggan.");
-    } finally {
-      setMergeBusy(false);
-    }
+  const resetControls = () => {
+    setActiveTab("all");
+    paged.resetControls();
   };
 
-  const restoreLastMerge = async () => {
-    if (!lastMergeId) return;
-    if (!window.confirm("Pulihkan gabung pelanggan terakhir? Riwayat yang dipindahkan akan dikembalikan ke pelanggan sumber.")) return;
-    const res = await fetch(`/api/master/customers/merge/${encodeURIComponent(lastMergeId)}/restore`, { method: "POST" });
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) {
-      window.alert(data.error ?? "Gagal memulihkan gabung pelanggan.");
-      return;
-    }
-    setLastMergeId("");
-    reload();
-  };
+  const tablePaged = { ...paged, resetControls };
 
-  // F2-01: simpan perubahan ke database lewat API. Kalau gagal, data tidak diubah.
   const saveRow = async (updated: CustomerRow) => {
     const res = await fetch(`/api/master/customers/${encodeURIComponent(updated.id)}`, {
       method: "PUT",
@@ -166,10 +145,11 @@ export function PelangganSection() {
       window.alert(msg.error ?? "Gagal menyimpan perubahan.");
       return;
     }
-    updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)), { persisted: true });
     setEditingRow(null);
+    reload();
   };
-  // Hapus = ARSIP (soft delete). Data tidak hilang permanen, hanya disembunyikan.
+
+  // Hapus di UI tetap memakai soft-delete (arsip), tidak menghilangkan data permanen.
   const deleteRow = async (id: string) => {
     if (!window.confirm("Arsipkan pelanggan ini? Data tidak dihapus permanen, hanya disembunyikan dari daftar.")) return;
     const res = await fetch(`/api/master/customers/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -181,76 +161,114 @@ export function PelangganSection() {
     updateRows((current) => current.filter((row) => row.id !== id), { persisted: true });
   };
 
-  const columns: MasterColumn<CustomerRow>[] = [
-    { key: "firstPurchase", label: "Tanggal", tone: "muted", width: 110, render: (row) => row.firstPurchase || "-" },
+  const baseColumns: MasterColumn<CustomerRow>[] = [
+    { key: "lastTransaction", label: "Transaksi Terakhir", tone: "muted", width: 140, render: (row) => row.lastTransaction || "-" },
     { key: "id", label: "ID", tone: "muted", width: 130 },
-    { key: "name", label: "Nama", tone: "strong", width: 210 },
-    { key: "phone", label: "No. HP", width: 140 },
-    { key: "city", label: "Kota", width: 160 },
-    { key: "province", label: "Provinsi", width: 160 },
-    { key: "source", label: "Channel Utama", width: 150 },
-    { key: "trx", label: "Frekuensi Trx", align: "right", tone: "strong", width: 130, render: (row) => `${formatNumber(row.trx)}x` },
-    {
-      key: "status",
-      label: "Status",
-      align: "right",
-      width: 130,
-      render: (row) => <StatusBadge label={row.status} tone={statusTone[row.status]} />,
-    },
+    { key: "name", label: "Nama", tone: "strong", width: 190 },
+    { key: "phone", label: "No. HP/WA", width: 140 },
+    { key: "address", label: "Alamat", width: 260 },
+    { key: "city", label: "Kota", width: 150 },
+    { key: "firstSource", label: "Sumber Pertama", width: 145 },
+    { key: "lastSource", label: "Sumber Terakhir", width: 145 },
+    { key: "platformChannel", label: "Platform / Channel", width: 190 },
+    { key: "totalTransactions", label: "Total Trx", align: "right", tone: "strong", width: 110, render: (row) => `${formatNumber(row.totalTransactions)}x` },
+    { key: "totalPurchase", label: "Total Pembelian", align: "right", tone: "strong", width: 160, render: (row) => formatRupiah(row.totalPurchase) },
+    { key: "customerStatus", label: "Status Pelanggan", width: 170, render: (row) => <StatusBadge label={row.customerStatus} tone={statusTone[row.customerStatus]} /> },
+    { key: "completenessStatus", label: "Kelengkapan", width: 155, render: (row) => <StatusBadge label={row.completenessStatus} tone={statusTone[row.completenessStatus]} /> },
+    { key: "validationStatus", label: "Validasi", width: 180, render: (row) => <StatusBadge label={row.validationStatus} tone={statusTone[row.validationStatus]} /> },
   ];
+  const validationColumns: MasterColumn<CustomerRow>[] = activeTab === "validation"
+    ? [
+        { key: "validationReason", label: "Alasan Validasi", width: 290 },
+        { key: "recommendation", label: "Rekomendasi", width: 310 },
+      ]
+    : [];
+  const columns = [...baseColumns, ...validationColumns];
 
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {kpiItems.map((item) => (
-          <KpiCard key={item.label} item={item} />
-        ))}
+        {kpiItems.map((item) => <KpiCard key={item.label} item={item} />)}
       </div>
 
-      <DataPanel title="Daftar Pelanggan" subtitle="Seluruh pelanggan hasil penggabungan data.">
+      <DataPanel
+        title="Daftar Pelanggan"
+        subtitle="Klik baris untuk melihat data lengkap. Status kelengkapan dan validasi dihitung read-only."
+      >
+        <div className="mb-5 border-b border-slate-200" role="tablist" aria-label="Tampilan data pelanggan">
+          <div className="flex min-w-max gap-1 overflow-x-auto">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => selectTab(tab.id)}
+                className={`border-b-2 px-4 py-3 text-sm font-bold transition ${
+                  activeTab === tab.id
+                    ? "border-brand-red text-brand-red"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                {tab.label}
+                <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${activeTab === tab.id ? "bg-red-50" : "bg-slate-100"}`}>
+                  {formatNumber(tab.count)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <MasterTable
-          paged={paged}
+          paged={tablePaged}
           columns={columns}
           rowKey={(row) => row.id}
-          searchPlaceholder="Cari nama, No HP, ID, kota…"
-          minWidth={980}
+          searchPlaceholder="Cari nama, No. HP/WA, ID, alamat, kota, source…"
+          minWidth={2200}
           virtualized
+          onRowClick={setDetailRow}
+          rowAriaLabel={(row) => `Buka detail pelanggan ${row.name}`}
           toolbar={
             <>
               <ToolbarSelect
-                value={filters.status ?? ""}
-                onChange={(v) => setFilter("status", v)}
-                allLabel="Semua Status"
-                options={["Baru", "Repeat", "High Value", "Perlu Dicek"].map((s) => ({ value: s, label: s }))}
+                value={filters.sourceCategory ?? ""}
+                onChange={(value) => setFilter("sourceCategory", value)}
+                allLabel="Semua Sumber"
+                options={[
+                  { value: "TikTok", label: "TikTok" },
+                  { value: "Shopee", label: "Shopee" },
+                  { value: "Meta/Akuisisi", label: "Meta / Akuisisi" },
+                  { value: "CRM", label: "CRM" },
+                ]}
               />
               <ToolbarSelect
                 value={filters.province ?? ""}
-                onChange={(v) => setFilter("province", v)}
+                onChange={(value) => setFilter("province", value)}
                 allLabel="Semua Provinsi"
-                options={distinct("province").map((p) => ({ value: p, label: p }))}
+                options={distinct("province").map((value) => ({ value, label: value }))}
               />
               <ToolbarSelect
                 value={sort}
                 onChange={setSort}
                 allLabel="Urutan asli"
                 options={[
-                  { value: "trx:desc", label: "Frekuensi Trx terbanyak" },
+                  { value: "lastTransaction:desc", label: "Transaksi terbaru" },
+                  { value: "totalTransactions:desc", label: "Total transaksi terbanyak" },
+                  { value: "totalPurchase:desc", label: "Total pembelian terbesar" },
                   { value: "name:asc", label: "Nama A-Z" },
                 ]}
               />
               <DateRangeFilter
-                label="Tanggal"
-                from={dateFrom.firstPurchase ?? ""}
-                to={dateTo.firstPurchase ?? ""}
-                onFrom={(v) => setDateFrom("firstPurchase", v)}
-                onTo={(v) => setDateTo("firstPurchase", v)}
+                label="Transaksi Terakhir"
+                from={dateFrom.lastTransaction ?? ""}
+                to={dateTo.lastTransaction ?? ""}
+                onFrom={(value) => setDateFrom("lastTransaction", value)}
+                onTo={(value) => setDateTo("lastTransaction", value)}
               />
             </>
           }
           renderActions={(row) => (
             <>
-              <RowActionButton label="Lihat" onClick={() => setDetailRow(row)} />
-              <RowActionButton label="Gabung" onClick={() => { setMergeSource(row); setMergeTargetId(""); setMergePreview(null); setMergeError(""); }} />
               <RowActionButton label="Edit" onClick={() => setEditingRow(row)} />
               <RowActionButton label="Hapus" danger onClick={() => deleteRow(row.id)} />
             </>
@@ -259,65 +277,56 @@ export function PelangganSection() {
       </DataPanel>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <DataPanel title="Keterangan Status">
-          <ul className="flex flex-col gap-3">
-            {legendItems.map((item) => (
-              <li key={item.label} className="flex items-start gap-3 text-sm">
-                <StatusBadge label={item.label} tone={statusTone[item.label]} />
-                <span className="pt-0.5 font-medium text-slate-600">{item.description}</span>
-              </li>
-            ))}
-          </ul>
-        </DataPanel>
-
-        <DataPanel title="Catatan Pelanggan">
-          <NotesList notes={notes} />
-        </DataPanel>
+        <DataPanel title="Keterangan Status"><ul className="flex flex-col gap-3">
+          {legendItems.map((item) => (
+            <li key={item.label} className="flex items-start gap-3 text-sm">
+              <StatusBadge label={item.label} tone={statusTone[item.label]} />
+              <span className="pt-0.5 font-medium text-slate-600">{item.description}</span>
+            </li>
+          ))}
+        </ul></DataPanel>
+        <DataPanel title="Catatan Pelanggan"><NotesList notes={notes} /></DataPanel>
       </div>
 
       {detailRow && (
         <DetailRecordModal
           title="Detail Pelanggan"
-          subtitle="Informasi lengkap pelanggan dari database ERP."
+          subtitle="Informasi pelanggan dan hasil validasi read-only dari database ERP."
           fields={[
-            { label: "Tanggal", value: detailRow.firstPurchase },
+            { label: "Transaksi Terakhir", value: detailRow.lastTransaction || "-" },
+            { label: "Transaksi Pertama", value: detailRow.firstPurchase || "-" },
             { label: "ID Customer", value: detailRow.id },
             { label: "Nama", value: detailRow.name },
-            { label: "No. HP", value: detailRow.phone },
+            { label: "No. HP/WA", value: detailRow.phone },
             { label: "Alamat Lengkap", value: detailRow.address },
             { label: "Kota", value: detailRow.city },
             { label: "Provinsi", value: detailRow.province },
-            { label: "Channel Utama", value: detailRow.source },
-            { label: "Frekuensi Transaksi", value: `${formatNumber(detailRow.trx)}x` },
-            { label: "Status", value: detailRow.status },
+            { label: "Sumber Pertama", value: detailRow.firstSource },
+            { label: "Sumber Terakhir", value: detailRow.lastSource },
+            { label: "Platform / Channel", value: detailRow.platformChannel },
+            { label: "Total Transaksi", value: `${formatNumber(detailRow.totalTransactions)}x` },
+            { label: "Total Pembelian", value: formatRupiah(detailRow.totalPurchase) },
+            { label: "Status Pelanggan", value: detailRow.customerStatus },
+            { label: "Status Kelengkapan", value: detailRow.completenessStatus },
+            { label: "Status Validasi", value: detailRow.validationStatus },
+            { label: "Alasan Validasi", value: detailRow.validationReason },
+            { label: "Rekomendasi", value: detailRow.recommendation },
           ]}
+          actions={(
+            <button
+              type="button"
+              onClick={() => {
+                setEditingRow(detailRow);
+                setDetailRow(null);
+              }}
+              className="rounded-xl bg-brand-red px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700"
+            >
+              Edit Data
+            </button>
+          )}
           onClose={() => setDetailRow(null)}
         />
       )}
-
-      {mergeSource && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
-          <div className="w-full max-w-2xl rounded-3xl bg-white p-5 shadow-2xl">
-            <h2 className="text-xl font-black text-slate-950">Gabung Pelanggan</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">Pilih pelanggan utama. Data sumber tidak dihapus; riwayat dipindah dan sumber diarsipkan.</p>
-            <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm"><b>Sumber:</b> {mergeSource.id} — {mergeSource.name} ({mergeSource.phone})</div>
-            <label className="mt-4 flex flex-col gap-1.5 text-sm font-bold text-slate-700">
-              Pelanggan utama
-              <select value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3">
-                <option value="">Pilih pelanggan utama…</option>
-                {allRows.filter((row) => row.id !== mergeSource.id && row.phone !== "-" && row.phone === mergeSource.phone).map((row) => <option key={row.id} value={row.id}>{row.id} — {row.name} ({row.phone})</option>)}
-              </select>
-            </label>
-            {mergePreview && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><p><b>Alasan:</b> {mergePreview.samePhone ? "No. HP ternormalisasi sama" : "Dipilih admin (No. HP berbeda)"}</p><p className="mt-2"><b>Yang dipindahkan:</b> {mergePreview.impact.orders} pesanan, {mergePreview.impact.transactions} transaksi cohort, {mergePreview.impact.shipments} pengiriman, {mergePreview.impact.returns} retur.</p></div>}
-            {mergeError && <p className="mt-3 text-sm font-semibold text-red-600">{mergeError}</p>}
-            <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-              <button type="button" onClick={() => setMergeSource(null)} disabled={mergeBusy} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600">Batal</button>
-              {!mergePreview ? <button type="button" onClick={loadMergePreview} disabled={!mergeTargetId || mergeBusy} className="rounded-xl bg-brand-red px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{mergeBusy ? "Memuat…" : "Lihat Dampak"}</button> : <button type="button" onClick={mergeCustomers} disabled={mergeBusy} className="rounded-xl bg-brand-red px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{mergeBusy ? "Menggabungkan…" : "Konfirmasi Gabung"}</button>}
-            </div>
-          </div>
-        </div>
-      )}
-      {lastMergeId && <button type="button" onClick={restoreLastMerge} className="fixed bottom-5 right-5 z-40 rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white shadow-lg">Batalkan gabung pelanggan terakhir</button>}
 
       {editingRow && (
         <EditRecordModal
@@ -326,7 +335,7 @@ export function PelangganSection() {
           fields={editFields}
           onClose={() => setEditingRow(null)}
           onSave={saveRow}
-          note="Perubahan disimpan langsung ke database."
+          note="Perubahan identitas disimpan langsung ke database. Status kelengkapan dihitung ulang setelah tersimpan."
         />
       )}
     </div>

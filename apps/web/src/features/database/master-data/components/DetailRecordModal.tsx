@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { X } from "lucide-react";
 
 export interface DetailField {
@@ -11,10 +12,11 @@ interface DetailRecordModalProps {
   title: string;
   subtitle?: string;
   fields: DetailField[];
+  actions?: ReactNode;
   onClose: () => void;
 }
 
-export function DetailRecordModal({ title, subtitle, fields, onClose }: DetailRecordModalProps) {
+export function DetailRecordModal({ title, subtitle, fields, actions, onClose }: DetailRecordModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
       <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl">
@@ -44,7 +46,8 @@ export function DetailRecordModal({ title, subtitle, fields, onClose }: DetailRe
           ))}
         </div>
 
-        <div className="mt-6 flex justify-end border-t border-slate-100 pt-4">
+        <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+          {actions}
           <button
             type="button"
             onClick={onClose}

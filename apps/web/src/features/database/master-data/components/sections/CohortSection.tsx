@@ -82,8 +82,16 @@ const riwayatEditFields: EditField<CohortTxRow>[] = [
 export function CohortSection() {
   const [editingSummary, setEditingSummary] = useState<CohortSummaryRow | null>(null);
   const [editingRiwayat, setEditingRiwayat] = useState<CohortTxRow | null>(null);
-  const summary = usePagedData<CohortSummaryRow>("/api/master/cohort-summary", ["id", "wa", "name"]);
-  const riwayat = usePagedData<CohortTxRow>("/api/master/cohort-riwayat", ["wa", "name", "product", "trx"]);
+  const summary = usePagedData<CohortSummaryRow>("/api/master/cohort-summary", ["id", "wa", "name"], {
+    initialSort: "last:desc",
+    dateKeys: ["first", "last"],
+    tieBreakerKey: "id",
+  });
+  const riwayat = usePagedData<CohortTxRow>("/api/master/cohort-riwayat", ["wa", "name", "product", "trx"], {
+    initialSort: "date:desc",
+    dateKeys: ["date"],
+    tieBreakerKey: "rowId",
+  });
 
   // KPI dihitung dari data yang sama dengan tabel — tidak ada angka mati.
   const kpiItems = useMemo(() => {
@@ -118,8 +126,8 @@ export function CohortSection() {
   };
 
   const summaryColumns: MasterColumn<CohortSummaryRow>[] = [
-    { key: "first", label: "Beli Awal", tone: "muted", width: 110 },
     { key: "last", label: "Beli Akhir", tone: "muted", width: 110 },
+    { key: "first", label: "Beli Awal", tone: "muted", width: 110 },
     { key: "id", label: "ID Customer", tone: "muted", width: 130 },
     { key: "wa", label: "No. WA", tone: "muted", width: 140 },
     { key: "name", label: "Nama", tone: "strong", width: 200 },
