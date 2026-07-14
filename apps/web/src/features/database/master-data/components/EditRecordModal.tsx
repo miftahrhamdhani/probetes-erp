@@ -15,7 +15,9 @@ interface EditRecordModalProps<T extends object> {
   record: T;
   fields: EditField<T>[];
   onClose: () => void;
-  onSave: (record: T) => void;
+  onSave: (record: T) => void | Promise<void>;
+  /** Catatan di bawah judul. Default: peringatan perubahan masih mock. */
+  note?: string;
 }
 
 export function EditRecordModal<T extends object>({
@@ -24,8 +26,19 @@ export function EditRecordModal<T extends object>({
   fields,
   onClose,
   onSave,
+  note = "Perubahan ini sementara di frontend, belum tersimpan ke database.",
 }: EditRecordModalProps<T>) {
   const [draft, setDraft] = useState<T>(record);
+  const [busy, setBusy] = useState(false);
+
+  const handleSave = async () => {
+    setBusy(true);
+    try {
+      await onSave(draft);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const setValue = (key: keyof T, value: string, type: EditField<T>["type"]) => {
     setDraft((current) => ({
@@ -40,9 +53,7 @@ export function EditRecordModal<T extends object>({
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
             <h2 className="text-xl font-black tracking-[-0.03em] text-slate-950">{title}</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">
-              Perubahan ini sementara di frontend, belum tersimpan ke database.
-            </p>
+            <p className="mt-1 text-sm font-medium text-slate-500">{note}</p>
           </div>
           <button
             type="button"
@@ -73,16 +84,18 @@ export function EditRecordModal<T extends object>({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+            disabled={busy}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50"
           >
             Batal
           </button>
           <button
             type="button"
-            onClick={() => onSave(draft)}
-            className="rounded-xl bg-brand-red px-4 py-2 text-sm font-bold text-white transition hover:bg-[#d60511]"
+            onClick={handleSave}
+            disabled={busy}
+            className="rounded-xl bg-brand-red px-4 py-2 text-sm font-bold text-white transition hover:bg-[#d60511] disabled:opacity-60"
           >
-            Simpan Perubahan
+            {busy ? "Menyimpan…" : "Simpan Perubahan"}
           </button>
         </div>
       </div>

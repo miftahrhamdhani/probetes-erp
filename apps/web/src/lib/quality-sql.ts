@@ -16,8 +16,10 @@ export const HP_ADA = `${HP_RAW} <> ''`;
 /** Nomor ada tapi formatnya salah (bukan 62 + 8..13 digit). */
 export const HP_TIDAK_NORMAL_WHERE = `${HP_ADA} AND ${HP_DIGITS} !~ '^62[0-9]{8,13}$'`;
 
-/** Nama pelanggan kosong, terlalu pendek, atau hasil error import. */
-export const NAMA_BERMASALAH_WHERE = `name IS NULL OR trim(name) = '' OR length(trim(name)) <= 3 OR upper(name) LIKE '%ERROR%'`;
+/** Nama pelanggan yang BENAR bermasalah: kosong, satu huruf, hasil error import,
+ *  atau tidak mengandung huruf sama sekali (mis. hanya angka/simbol).
+ *  Nama pendek yang wajar (tia, Ali, Lia, Amy) TIDAK dihitung masalah. */
+export const NAMA_BERMASALAH_WHERE = `name IS NULL OR trim(name) = '' OR length(trim(name)) <= 1 OR upper(name) LIKE '%ERROR%' OR trim(name) !~ '[A-Za-z]'`;
 
 /** Punya alamat tapi kolom kota belum terisi. */
 export const KOTA_KOSONG_WHERE = `NULLIF(address, '') IS NOT NULL AND NULLIF(city, '') IS NULL`;

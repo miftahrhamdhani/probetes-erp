@@ -12,8 +12,9 @@ const SQL = `
     COALESCE(NULLIF(original_names, ''), '(kosong di data lama)') AS original,
     order_count AS orders,
     value_total AS value,
-    CASE WHEN status = 'Aktif' THEN 'Aktif' ELSE 'Perlu review' END AS status
+    CASE WHEN status IN ('Aktif', 'active', 'valid') THEN 'Aktif' ELSE 'Perlu review' END AS status
   FROM master.channels
+  WHERE status IS DISTINCT FROM 'archived'
   ORDER BY channel_id
 `;
 

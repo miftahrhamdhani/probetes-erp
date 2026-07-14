@@ -53,26 +53,3 @@ export function downloadCsv(filename: string, rows: Record<string, string>[]) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-
-// Contoh riwayat (data dummy) supaya tombol Lihat/Download/laporan ROAS bisa langsung dicoba
-// sebelum ada import sungguhan di sesi ini.
-export const seedHistory: ImportHistoryEntry[] = [
-  {
-    id: "IMP-0002", waktu: "01 Jul 2026 09:12", platform: "meta", jenis: "order",
-    adv: null, toko: "Akuisisi (Skalev)", periode: "Juni 2026", fileName: "scalev_order_juni.csv",
-    rowCount: 2, status: "Selesai",
-    rows: [
-      { "Tanggal Pesanan": "2026-06-01 03:33:54", Platform: "Meta / Akuisisi", Toko: "Akuisisi (Skalev)", Customer: "Fransco Tentua", "No HP": "6285243335327", Produk: "UPDM - Ebook Remisi", "Total Bayar": "Rp89.000" },
-      { "Tanggal Pesanan": "2026-06-01 15:16:01", Platform: "Meta / Akuisisi", Toko: "Akuisisi (Skalev)", Customer: "Dewi Eka", "No HP": "6287878751314", Produk: "UPDM - Ebook Remisi", "Total Bayar": "Rp145.000" },
-    ],
-  },
-  {
-    id: "IMP-0001", waktu: "30 Jun 2026 19:50", platform: "shopee", jenis: "ads",
-    adv: "Adv Bagas", toko: "Probetes Herbal", periode: "Juni 2026", fileName: "Data-+Semua-Iklan-Produk-01_06_2026-30_06_2026.csv",
-    rowCount: 2, status: "Selesai",
-    rows: [
-      { Platform: "Shopee", ADV: "Adv Bagas", Toko: "Probetes Herbal", "Nama Iklan": "Shop GMV Max", Status: "Dijeda", Biaya: "278.838" },
-      { Platform: "Shopee", ADV: "Adv Bagas", Toko: "Probetes Herbal", "Nama Iklan": "Probetes Herbal Diabetes U...", Status: "Berjalan", Biaya: "940.442" },
-    ],
-  },
-];

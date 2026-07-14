@@ -8,11 +8,13 @@ const SQL = `
     product_id AS id,
     COALESCE(product_final_name, '') AS name,
     COALESCE(NULLIF(sku, ''), '-') AS sku,
+    COALESCE(NULLIF(category, ''), '-') AS category,
     COALESCE(original_names, '') AS original,
     qty_total AS qty,
     value_total AS value,
     CASE WHEN status = 'valid' THEN 'Tersedia' ELSE 'Perlu dicek' END AS status
   FROM master.products
+  WHERE status IS DISTINCT FROM 'archived'
   ORDER BY product_id
 `;
 

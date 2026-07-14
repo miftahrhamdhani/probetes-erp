@@ -54,6 +54,7 @@ const SQL = `
   LEFT JOIN dominant_channel dc ON dc.customer_id = cu.customer_id
   LEFT JOIN master.channels ch ON ch.channel_id = dc.channel_id
   LEFT JOIN master.customer_cohorts cc ON cc.customer_id = cu.customer_id
+  WHERE cu.status IS DISTINCT FROM 'archived'
   ORDER BY length(cu.customer_id), cu.customer_id
 `;
 

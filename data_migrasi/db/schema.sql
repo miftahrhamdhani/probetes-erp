@@ -236,3 +236,50 @@ CREATE TABLE audit.data_quality_checks (
     action         TEXT,
     related_id     TEXT
 );
+
+-- Jejak perubahan dari UI Data Utama. changed_by sementara 'app'; nanti diisi
+-- account_id sesudah IAM/login dibuat.
+CREATE TABLE audit.change_log (
+    change_id   BIGSERIAL PRIMARY KEY,
+    table_name  TEXT NOT NULL,
+    record_id   TEXT NOT NULL,
+    action      TEXT NOT NULL, -- update | archive | merge | restore | mapping
+    before_data JSONB,
+    after_data  JSONB,
+    changed_by  TEXT DEFAULT 'app',
+    changed_at  TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX idx_change_log_record ON audit.change_log(table_name, record_id);
+
+-- Snapshot merge agar customer sumber bisa dipulihkan tanpa menyentuh data lama
+-- customer tujuan. Relasi terdampak menyimpan daftar ID sebelum dipindahkan.
+CREATE TABLE audit.customer_merges (
+    merge_id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_customer_id    TEXT NOT NULL REFERENCES master.customers(customer_id),
+    target_customer_id    TEXT NOT NULL REFERENCES master.customers(customer_id),
+    status                TEXT NOT NULL DEFAULT 'merged', -- merged | restored
+    source_customer       JSONB NOT NULL,
+    source_cohort         JSONB,
+    affected_records      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    merged_by             TEXT DEFAULT 'app',
+    merged_at             TIMESTAMPTZ DEFAULT now(),
+    restored_at           TIMESTAMPTZ
+);
+
+-- Alias dari nama mentah file lama menuju master final. Nama mentah tidak dibuang.
+CREATE TABLE master.product_aliases (
+    alias_id      BIGSERIAL PRIMARY KEY,
+    original_name TEXT NOT NULL UNIQUE,
+    product_id    TEXT REFERENCES master.products(product_id),
+    status        TEXT NOT NULL DEFAULT 'review',
+    source        TEXT,
+    updated_at    TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE master.channel_aliases (
+    alias_id      BIGSERIAL PRIMARY KEY,
+    original_name TEXT NOT NULL UNIQUE,
+    channel_id    TEXT REFERENCES master.channels(channel_id),
+    status        TEXT NOT NULL DEFAULT 'review',
+    source        TEXT,
+    updated_at    TIMESTAMPTZ DEFAULT now()
+);

@@ -32,20 +32,24 @@ export function SalesOrderCenterMenuCard({ menu, icon: Icon, miniVisual }: Sales
         <ChevronRight className="mt-1 size-4 shrink-0 text-white/60 transition group-hover:translate-x-1 group-hover:text-white" />
       </div>
 
-      <div className="mt-4 rounded-xl bg-white/10 p-3">
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em] text-white/70">{menu.miniTitle}</p>
-        {miniVisual}
-      </div>
+      {miniVisual && (
+        <div className="mt-4 rounded-xl bg-white/10 p-3">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em] text-white/70">{menu.miniTitle}</p>
+          {miniVisual}
+        </div>
+      )}
 
-      <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/15 pt-3 sm:grid-cols-4">
-        {menu.stats.map((stat) => (
-          <div key={stat.label} className="min-w-0">
-            <p className="truncate text-[10px] font-semibold text-white/65">{stat.label}</p>
-            <p className="truncate text-sm font-extrabold text-white" title={stat.value}>{stat.value}</p>
-            {stat.deltaPct !== undefined && <p className="text-[10px] font-bold text-white/85">▲ {stat.deltaPct.toFixed(1)}%</p>}
-          </div>
-        ))}
-      </div>
+      {menu.stats.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/15 pt-3 sm:grid-cols-4">
+          {menu.stats.map((stat) => (
+            <div key={stat.label} className="min-w-0">
+              <p className="truncate text-[10px] font-semibold text-white/65">{stat.label}</p>
+              <p className="truncate text-sm font-extrabold text-white" title={stat.value}>{stat.value}</p>
+              {stat.deltaPct !== undefined && <p className="text-[10px] font-bold text-white/85">▲ {stat.deltaPct.toFixed(1)}%</p>}
+            </div>
+          ))}
+        </div>
+      )}
     </Link>
   );
 }

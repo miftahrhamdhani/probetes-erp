@@ -9,6 +9,7 @@ export interface MarketingOrderFilters {
   divisi: string | null;
   productId: string | null;
   csId: string | null;
+  courierId: string | null;
   search: string | null;
 }
 
@@ -23,7 +24,7 @@ export function marketingOrderFilters(params: URLSearchParams): MarketingOrderFi
   const endDate = date(params.get("end_date"), "end_date");
   if (startDate > endDate) throw new Error("start_date tidak boleh lebih besar dari end_date.");
   const text = (name: string) => params.get(name)?.trim() || null;
-  return { startDate, endDate, channelId: text("channel_id"), divisi: text("divisi"), productId: text("product_id"), csId: text("cs_id"), search: text("search") };
+  return { startDate, endDate, channelId: text("channel_id"), divisi: text("divisi"), productId: text("product_id"), csId: text("cs_id"), courierId: text("courier_id"), search: text("search") };
 }
 
 /** WHERE untuk orders.orders alias `o`; flag valid adalah satu-satunya definisi order valid. */
@@ -35,6 +36,7 @@ export function validOrderWhere(filters: MarketingOrderFilters) {
   else add("o.channel_id =", filters.channelId);
   add("o.divisi =", filters.divisi);
   add("o.cs_id =", filters.csId);
+  add("o.courier_id =", filters.courierId);
   if (filters.productId) {
     values.push(filters.productId);
     where.push(`EXISTS (SELECT 1 FROM orders.order_items oi_filter WHERE oi_filter.order_id = o.order_id AND oi_filter.product_id = $${values.length})`);

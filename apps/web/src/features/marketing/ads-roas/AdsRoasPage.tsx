@@ -1,182 +1,85 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { FileUp, LoaderCircle, RefreshCw, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
 import { MarketingBackButton } from "@/features/marketing/components/MarketingBackButton";
-import { DisabledMetricCard } from "@/features/marketing/components/availability/DisabledMetricCard";
-import { DataUnavailableNotice } from "@/features/marketing/components/availability/DataUnavailableNotice";
-import { MetricAvailabilityBadge } from "@/features/marketing/components/availability/MetricAvailabilityBadge";
-import { DateRangePicker } from "@/features/marketing/components/daterange/DateRangePicker";
-import { useDateRangeQuery } from "@/features/marketing/components/daterange/useDateRangeQuery";
-import { SourcePerformanceTab } from "./SourcePerformanceTab";
-import type { AvailabilityMap } from "@/lib/availability";
+import { AdsRoasHeader } from "./components/AdsRoasHeader";
+import { AdsRoasFilterBar, type AdsRoasSelectFilter } from "./components/AdsRoasFilterBar";
+import { AdsRoasTabs, type AdsRoasTabKey } from "./components/AdsRoasTabs";
+import { AdsRoasKpiCard } from "./components/AdsRoasKpiCard";
+import { AdsRoasChartCard } from "./components/AdsRoasChartCard";
+import { AdsRoasTableCard, type AdsRoasTableColumn } from "./components/AdsRoasTableCard";
+import { AdsRoasStatusBadge } from "./components/AdsRoasStatusBadge";
+import { AdsRoasErrorState, AdsRoasKpiSkeleton, AdsRoasSectionSkeleton } from "./components/AdsRoasStates";
+import { HorizontalValueBars, PlatformRoasBarChart, RoasDonutChart, SpendingSalesComparisonChart, SpendingSalesTrendChart, VerticalValueBarChart } from "./components/charts/AdsRoasCharts";
+import { getAdsRoasByPlatform, getAdsRoasDataReview, getAdsRoasOverview, getAdvPerformance, getCampaignPerformance, getStorePerformance } from "./lib/marketingAdsRoasService";
+import { formatNumber, formatPersen, formatRupiah, formatRupiahRingkas, roasOrDash } from "./lib/format";
+import { filterOptionsMock } from "./data/temporaryAdsRoasMockData";
+import type { AdsRoasSummary, AdvPerformanceData, AdvRow, CampaignPerformanceData, CampaignRow, DataReviewData, DataReviewItem, Platform, StorePerformanceData, StoreRow } from "./types/marketingAdsRoasTypes";
 
-interface AdsSummary {
-  spend: number; impressions: number; reach: number; link_clicks: number; landing_page_views: number;
-  checkout_started: number; purchases: number; purchase_value: number; leads: number; add_to_cart: number;
-  ctr_link: number | null; cpc_link: number | null; cpm: number | null; cost_per_landing_page_view: number | null;
-  cost_per_checkout: number | null; cost_per_purchase: number | null; platform_roas: number | null;
-  cost_per_lead: number | null; checkout_to_purchase_rate: number | null; click_to_purchase_rate: number | null;
-  landing_page_view_rate: number | null;
-}
-interface Campaign {
-  campaign_name: string; product_label: string | null; advertiser_name: string | null; account_code: string | null;
-  campaign_delivery_status: string | null; spend: number; impressions: number; reach: number; link_clicks: number;
-  ctr_link: number | null; cpc_link: number | null; cpm: number | null; landing_page_views: number;
-  checkout_started: number; purchases: number; cost_per_purchase: number | null; purchase_value: number;
-  platform_roas: number | null; leads: number; cost_per_lead: number | null;
-}
-interface TrendPoint { date: string; spend: number; purchase_value: number; link_clicks: number; purchases: number; platform_roas: number | null }
-interface FunnelPoint { label: string; value: number }
-interface ImportBatch { batch_id: string; file_name: string; product_label: string | null; advertiser_name: string | null; report_month: string | null; report_year: number | null; status: string; total_rows: number; success_rows: number; imported_at: string }
-interface SourceSummary { total_order: number; revenue: number; product_sold: number; unique_customer: number; aov: number | null; top_products: SourceProduct[] }
-interface SourceChannel { channel_id: string; channel_name: string; platform: string; total_order: number; revenue: number; product_sold: number; unique_customer: number; aov: number | null }
-interface SourceDivision { divisi: string; total_order: number; revenue: number; product_sold: number; unique_customer: number; aov: number | null }
-interface SourceProduct { product_id: string | null; product_name: string; product_sold: number; revenue: number }
-interface SourceTrend { date: string; total_order: number; revenue: number; unique_customer: number }
-interface SourceOrder { order_id: string; order_date: string; customer_name: string; channel_name: string; divisi: string; cs_name: string; total_amount: number }
-
-const rupiah = (value: number | null | undefined) => value === null || value === undefined || !Number.isFinite(value) ? "—" : new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
-const number = (value: number | null | undefined) => value === null || value === undefined || !Number.isFinite(value) ? "—" : new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(value);
-const percent = (value: number | null | undefined) => value === null || value === undefined || !Number.isFinite(value) ? "—" : `${value.toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`;
-const roas = (value: number | null | undefined) => value === null || value === undefined || !Number.isFinite(value) ? "—" : `${value.toLocaleString("id-ID", { maximumFractionDigits: 2 })}x`;
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { cache: "no-store" });
-  const body = await response.json() as T & { error?: string };
-  if (!response.ok) throw new Error(body.error ?? "Gagal memuat data.");
-  return body;
-}
+const PLATFORM_TAB: Partial<Record<AdsRoasTabKey, Platform>> = { tiktok: "TikTok", shopee: "Shopee", meta: "Meta Ads" };
+const PRIORITY_TONE: Record<DataReviewItem["prioritas"], "red" | "amber" | "green"> = { Tinggi: "red", Sedang: "amber", Rendah: "green" };
 
 export function AdsRoasPage() {
-  const { range, setRange } = useDateRangeQuery();
-  const [tab, setTab] = useState<"platform" | "source" | "history">("platform");
-  const [summary, setSummary] = useState<AdsSummary | null>(null);
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [trend, setTrend] = useState<TrendPoint[]>([]);
-  const [funnel, setFunnel] = useState<FunnelPoint[]>([]);
-  const [batches, setBatches] = useState<ImportBatch[]>([]);
-  const [availability, setAvailability] = useState<AvailabilityMap>({});
-  const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
+  const [tab, setTab] = useState<AdsRoasTabKey>("overview");
+  const [periode, setPeriode] = useState("7hari");
+  const [platform, setPlatform] = useState("Semua");
+  const [adv, setAdv] = useState("Semua");
+  const [toko, setToko] = useState("Semua");
+  const [campaign, setCampaign] = useState("Semua");
+  const [produk, setProduk] = useState("Semua");
+  const [summary, setSummary] = useState<AdsRoasSummary | null>(null);
+  const [advData, setAdvData] = useState<AdvPerformanceData | null>(null);
+  const [campaignData, setCampaignData] = useState<CampaignPerformanceData | null>(null);
+  const [storeData, setStoreData] = useState<StorePerformanceData | null>(null);
+  const [reviewData, setReviewData] = useState<DataReviewData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [sourceSummary, setSourceSummary] = useState<SourceSummary | null>(null);
-  const [sourceChannels, setSourceChannels] = useState<SourceChannel[]>([]);
-  const [sourceDivisions, setSourceDivisions] = useState<SourceDivision[]>([]);
-  const [sourceTrend, setSourceTrend] = useState<SourceTrend[]>([]);
-  const [sourceOrders, setSourceOrders] = useState<SourceOrder[]>([]);
-  const [sourceTitle, setSourceTitle] = useState<string | null>(null);
-  const [sourceLoading, setSourceLoading] = useState(false);
-  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const filters = { periode, platform, adv, toko, campaign, produk };
 
-  const query = new URLSearchParams({ start_date: range.startDate, end_date: range.endDate }).toString();
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const [summaryRes, campaignsRes, trendRes, funnelRes, batchesRes] = await Promise.all([
-        fetchJson<{ data: AdsSummary; availability: AvailabilityMap }>(`/api/marketing/ads/summary?${query}`),
-        fetchJson<{ data: Campaign[] }>(`/api/marketing/ads/campaigns?${query}&limit=100`),
-        fetchJson<{ data: TrendPoint[] }>(`/api/marketing/ads/trend?${query}`),
-        fetchJson<{ data: FunnelPoint[] }>(`/api/marketing/ads/funnel?${query}`),
-        fetchJson<{ data: ImportBatch[] }>("/api/marketing/ads/import-batches"),
-      ]);
-      setSummary(summaryRes.data); setAvailability(summaryRes.availability); setCampaigns(campaignsRes.data);
-      setTrend(trendRes.data); setFunnel(funnelRes.data); setBatches(batchesRes.data);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Gagal memuat data iklan."); }
-    finally { setLoading(false); }
-  }, [query]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const loadSource = useCallback(async (extra = "", title: string | null = null) => {
-    setSourceLoading(true); setSourceError(null); setSourceTitle(title);
-    try {
-      const filter = extra ? `&${extra}` : "";
-      const [summaryRes, channelRes, divisionRes, trendRes, ordersRes] = await Promise.all([
-        fetchJson<{ data: SourceSummary }>(`/api/marketing/source-performance/summary?${query}${filter}`),
-        fetchJson<{ data: SourceChannel[] }>(`/api/marketing/source-performance/by-channel?${query}${filter}`),
-        fetchJson<{ data: SourceDivision[] }>(`/api/marketing/source-performance/by-divisi?${query}${filter}`),
-        fetchJson<{ data: SourceTrend[] }>(`/api/marketing/source-performance/trend?${query}${filter}`),
-        fetchJson<{ data: SourceOrder[] }>(`/api/marketing/source-performance/orders?${query}${filter}&limit=25`),
-      ]);
-      setSourceSummary(summaryRes.data); setSourceChannels(channelRes.data); setSourceDivisions(divisionRes.data);
-      setSourceTrend(trendRes.data); setSourceOrders(ordersRes.data);
-    } catch (cause) { setSourceError(cause instanceof Error ? cause.message : "Gagal memuat performa sumber."); }
-    finally { setSourceLoading(false); }
-  }, [query]);
-
-  useEffect(() => { if (tab === "source") void loadSource(); }, [loadSource, tab]);
-
-  const importFile = async (file: File | undefined) => {
-    if (!file) return;
-    setUploading(true); setUploadError(null);
-    const form = new FormData(); form.set("file", file); form.set("report_year", "2025");
-    try {
-      const response = await fetch("/api/marketing/ads/import", { method: "POST", body: form });
-      const body = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(body.error ?? "Import gagal.");
-      await load(); setTab("platform");
-    } catch (cause) { setUploadError(cause instanceof Error ? cause.message : "Import gagal."); }
-    finally { setUploading(false); }
+  const load = () => {
+    setLoading(true); setError(false);
+    const platformKey = PLATFORM_TAB[tab];
+    const request = platformKey ? getAdsRoasByPlatform(platformKey, filters) : tab === "adv" ? getAdvPerformance(filters) : tab === "campaign" ? getCampaignPerformance(filters) : tab === "toko" ? getStorePerformance(filters) : tab === "review" ? getAdsRoasDataReview(filters) : getAdsRoasOverview(filters);
+    request.then((res) => { if (tab === "adv") setAdvData(res as AdvPerformanceData); else if (tab === "campaign") setCampaignData(res as CampaignPerformanceData); else if (tab === "toko") setStoreData(res as StorePerformanceData); else if (tab === "review") setReviewData(res as DataReviewData); else setSummary(res as AdsRoasSummary); }).catch(() => setError(true)).finally(() => setLoading(false));
   };
+  useEffect(load, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  const currentFilters = summary?.filters ?? advData?.filters ?? campaignData?.filters ?? storeData?.filters ?? reviewData?.filters ?? filterOptionsMock;
+  const updateTerakhir = summary?.updateTerakhir ?? "";
+  const selects: AdsRoasSelectFilter[] = [
+    { key: "periode", label: "Periode", value: periode, icon: "calendar", options: currentFilters.periode }, { key: "platform", label: "Platform", value: platform, icon: "platform", options: currentFilters.platform },
+    { key: "adv", label: "ADV", value: adv, icon: "adv", options: currentFilters.adv }, { key: "toko", label: "Toko", value: toko, icon: "toko", options: currentFilters.toko },
+    { key: "campaign", label: "Campaign", value: campaign, icon: "campaign", options: currentFilters.campaign }, { key: "produk", label: "Produk", value: produk, icon: "produk", options: currentFilters.produk },
+  ];
+  const onSelectChange = (key: string, value: string) => { if (key === "periode") setPeriode(value); if (key === "platform") setPlatform(value); if (key === "adv") setAdv(value); if (key === "toko") setToko(value); if (key === "campaign") setCampaign(value); if (key === "produk") setProduk(value); };
+  const isSummaryTab = tab === "overview" || !!PLATFORM_TAB[tab];
+  const activeKpi = isSummaryTab ? summary?.kpi : tab === "adv" ? advData?.kpi : tab === "campaign" ? campaignData?.kpi : tab === "toko" ? storeData?.kpi : reviewData?.kpi;
 
-  const selected = campaigns.find((row) => row.campaign_name === selectedCampaign);
-  const hasData = campaigns.length > 0;
-  const maxTrend = Math.max(1, ...trend.flatMap((point) => [point.spend, point.purchase_value]));
-  const maxFunnel = Math.max(1, ...funnel.map((point) => point.value));
-
-  return (
-    <div className="min-h-screen bg-[#eef2f6]/90 text-brand-deep">
-      <main className="mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-5 py-6 sm:px-7 lg:px-10">
-        <header className="flex flex-col justify-between gap-4 rounded-3xl bg-brand-red px-6 py-6 text-white shadow-lg sm:flex-row sm:items-center">
-          <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-white/75">Marketing</p><h1 className="mt-1 text-2xl font-black sm:text-3xl">Iklan &amp; ROAS</h1><p className="mt-1 text-sm font-medium text-white/80">Pantau hasil Meta Ads berdasarkan data import yang tersimpan.</p></div>
-          <button onClick={() => void load()} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/15 px-4 py-2.5 text-sm font-bold hover:bg-white/25 disabled:opacity-50"><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Perbarui</button>
-        </header>
-
-        <DateRangePicker value={range} onChange={setRange} />
-        <nav className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-          {([ ["platform", "Platform Ads"], ["source", "Source Performance"], ["history", "Riwayat Import"] ] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-bold transition ${tab === key ? "bg-brand-red text-white" : "text-slate-500 hover:bg-slate-50"}`}>{label}</button>)}
-        </nav>
-
-        {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>}
-        {loading && <div className="flex items-center justify-center gap-2 rounded-2xl bg-white p-12 text-sm font-bold text-slate-400"><LoaderCircle className="size-5 animate-spin" />Memuat data iklan...</div>}
-
-        {!loading && tab === "platform" && (!hasData ? <EmptyAdsState uploading={uploading} uploadError={uploadError} onFile={importFile} /> : <>
-          <p className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">ROAS ini berdasarkan nilai konversi dari platform iklan. ROAS ERP akan aktif setelah campaign dapat dimapping ke order internal.</p>
-          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5"><Kpi label="Belanja Iklan" value={rupiah(summary?.spend)} /><Kpi label="Nilai Konversi" value={rupiah(summary?.purchase_value)} /><Kpi label="Platform ROAS" value={roas(summary?.platform_roas)} badge={availability.platform_roas} /><Kpi label="Pembelian" value={number(summary?.purchases)} onClick={() => document.getElementById("campaign-table")?.scrollIntoView({ behavior: "smooth" })} /><Kpi label="Klik Tautan" value={number(summary?.link_clicks)} /></section>
-          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5"><Kpi label="CTR" value={percent(summary?.ctr_link)} /><Kpi label="CPC" value={rupiah(summary?.cpc_link)} /><Kpi label="CPM" value={rupiah(summary?.cpm)} /><Kpi label="Mulai Checkout" value={number(summary?.checkout_started)} /><Kpi label="Biaya per Pembelian" value={rupiah(summary?.cost_per_purchase)} /></section>
-          <section className="grid grid-cols-1 gap-3 xl:grid-cols-4">
-            <DisabledMetricCard label="ROAS ERP" reason={availability.erp_roas?.reason ?? "Belum tersedia."} />
-            <DisabledMetricCard label="Performa Set Iklan" reason={availability.adset_performance?.reason ?? "Belum tersedia."} />
-            <DisabledMetricCard label="Performa Iklan" reason={availability.ads_performance?.reason ?? "Belum tersedia."} />
-            <DisabledMetricCard label="Atribusi ke Pesanan ERP" reason={availability.attribution?.reason ?? "Belum tersedia."} />
-          </section>
-          <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <ChartCard title="Belanja vs Nilai Konversi"><div className="space-y-3">{trend.length ? trend.map((point) => <div key={point.date} className="grid grid-cols-[80px_1fr_1fr] items-center gap-2 text-xs"><span className="font-semibold text-slate-500">{point.date}</span><Bar value={point.spend} max={maxTrend} color="bg-brand-red" label={rupiah(point.spend)} /><Bar value={point.purchase_value} max={maxTrend} color="bg-emerald-500" label={rupiah(point.purchase_value)} /></div>) : <NoData />}</div></ChartCard>
-            <ChartCard title="Funnel Iklan"><div className="space-y-3">{funnel.map((point) => <button key={point.label} onClick={() => document.getElementById("campaign-table")?.scrollIntoView({ behavior: "smooth" })} className="grid w-full grid-cols-[160px_1fr_70px] items-center gap-2 text-left text-xs"><span className="font-semibold text-slate-600">{point.label}</span><span className="h-6 overflow-hidden rounded bg-slate-100"><span className="block h-full rounded bg-brand-red" style={{ width: `${Math.max(2, point.value / maxFunnel * 100)}%` }} /></span><span className="text-right font-bold">{number(point.value)}</span></button>)}</div></ChartCard>
-          </section>
-          <ChartCard title="Kampanye Meta Ads" action={<span className="text-xs text-slate-400">Klik kampanye untuk detail</span>}><CampaignTable campaigns={campaigns} onSelect={setSelectedCampaign} /></ChartCard>
-          {selected && <CampaignDetail campaign={selected} onClose={() => setSelectedCampaign(null)} />}
-        </>)}
-
-        {!loading && tab === "source" && <SourcePerformanceTab summary={sourceSummary} channels={sourceChannels} divisions={sourceDivisions} trend={sourceTrend} orders={sourceOrders} loading={sourceLoading} error={sourceError} title={sourceTitle} onChannel={(row) => void loadSource(`channel_id=${encodeURIComponent(row.channel_id)}`, `Pesanan Channel: ${row.channel_name}`)} onDivision={(row) => void loadSource(`divisi=${encodeURIComponent(row.divisi)}`, `Pesanan Divisi: ${row.divisi}`)} onProduct={(row) => row.product_id && void loadSource(`product_id=${encodeURIComponent(row.product_id)}`, `Pesanan Produk: ${row.product_name}`)} onReset={() => void loadSource()} />}
-        {!loading && tab === "history" && <ImportHistory batches={batches} uploading={uploading} uploadError={uploadError} onFile={importFile} />}
-        <div><MarketingBackButton /></div>
-      </main>
-    </div>
-  );
+  return <div className="min-h-screen overflow-x-hidden bg-[#eef2f6]/90 text-brand-deep"><main className="mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-5 py-6 sm:px-7 lg:px-10">
+    <AdsRoasHeader updateTerakhir={updateTerakhir} onRefresh={load} />
+    <AdsRoasFilterBar selects={selects} onSelectChange={onSelectChange} onApply={load} />
+    <AdsRoasTabs active={tab} onChange={setTab} />
+    {error && <AdsRoasErrorState />}
+    {loading && !activeKpi && <AdsRoasKpiSkeleton />}
+    {activeKpi && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-7">{activeKpi.map((item) => <AdsRoasKpiCard key={item.label} item={item} />)}</div>}
+    {isSummaryTab && (loading && !summary ? <AdsRoasSectionSkeleton /> : summary && <SummaryTabContent data={summary} />)}
+    {tab === "adv" && (loading && !advData ? <AdsRoasSectionSkeleton /> : advData && <AdvTabContent data={advData} />)}
+    {tab === "campaign" && (loading && !campaignData ? <AdsRoasSectionSkeleton /> : campaignData && <CampaignTabContent data={campaignData} />)}
+    {tab === "toko" && (loading && !storeData ? <AdsRoasSectionSkeleton /> : storeData && <StoreTabContent data={storeData} />)}
+    {tab === "review" && (loading && !reviewData ? <AdsRoasSectionSkeleton /> : reviewData && <ReviewTabContent data={reviewData} />)}
+    <div className="flex"><MarketingBackButton /></div>
+  </main><footer className="pb-7 pt-3 text-center text-xs font-medium text-slate-500 sm:text-sm">© 2026 Probetes ERP. All rights reserved.</footer></div>;
 }
 
-function Kpi({ label, value, badge, onClick }: { label: string; value: string; badge?: { status: import("@/lib/availability").AvailabilityStatus; reason: string | null }; onClick?: () => void }) {
-  const content = <><div className="flex items-start justify-between gap-2"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p>{badge && <MetricAvailabilityBadge status={badge.status} reason={badge.reason} />}</div><p className="mt-3 text-2xl font-black text-slate-800">{value}</p></>;
-  return onClick ? <button onClick={onClick} className="rounded-2xl bg-white p-4 text-left shadow-sm transition hover:ring-2 hover:ring-brand-red/30">{content}</button> : <div className="rounded-2xl bg-white p-4 shadow-sm">{content}</div>;
+function SummaryTabContent({ data }: { data: AdsRoasSummary }) {
+  const advColumns: AdsRoasTableColumn<AdvRow>[] = [{ key: "rank", header: "#", render: (r) => r.rank }, { key: "adv", header: "ADV", render: (r) => <span className="font-extrabold text-slate-900">{r.adv}</span> }, { key: "spending", header: "Spending", align: "right", render: (r) => formatRupiahRingkas(r.spending) }, { key: "sales", header: "Sales", align: "right", render: (r) => formatRupiahRingkas(r.sales) }, { key: "roas", header: "ROAS", align: "right", render: (r) => roasOrDash(r.roas, r.spending) }, { key: "status", header: "Status", render: (r) => <AdsRoasStatusBadge label={r.status} /> }];
+  const campaignColumns: AdsRoasTableColumn<CampaignRow>[] = [{ key: "campaign", header: "Campaign", render: (r) => <span className="font-extrabold text-slate-900">{r.campaign}</span> }, { key: "platform", header: "Platform", render: (r) => r.platform }, { key: "spending", header: "Spending", align: "right", render: (r) => formatRupiahRingkas(r.spending) }, { key: "sales", header: "Sales", align: "right", render: (r) => formatRupiahRingkas(r.sales) }, { key: "roas", header: "ROAS", align: "right", render: (r) => roasOrDash(r.roas, r.spending) }, { key: "status", header: "Status", render: (r) => <AdsRoasStatusBadge label={r.status} /> }];
+  const storeColumns: AdsRoasTableColumn<StoreRow>[] = [{ key: "toko", header: "Toko", render: (r) => <span className="font-extrabold text-slate-900">{r.toko}</span> }, { key: "platform", header: "Platform", render: (r) => r.platform }, { key: "sales", header: "Sales", align: "right", render: (r) => formatRupiahRingkas(r.sales) }, { key: "order", header: "Order", align: "right", render: (r) => formatNumber(r.order) }, { key: "roas", header: "ROAS", align: "right", render: (r) => `${r.roas.toFixed(2)}x` }, { key: "status", header: "Status", render: (r) => <AdsRoasStatusBadge label={r.status} /> }];
+  const reviewColumns: AdsRoasTableColumn<DataReviewItem>[] = [{ key: "tipe", header: "Tipe Data", render: (r) => r.tipeData }, { key: "jumlah", header: "Jumlah", align: "right", render: (r) => r.jumlah }, { key: "masalah", header: "Masalah", render: (r) => r.masalah }];
+  return <><div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.3fr_0.85fr_0.85fr_0.85fr]"><AdsRoasChartCard title="Tren Spending Ads vs Sales" action={<PeriodDropdown />}><SpendingSalesTrendChart labels={data.trend.map((t) => t.label)} spending={data.trend.map((t) => t.spending)} sales={data.trend.map((t) => t.sales)} formatValue={formatRupiahRingkas} /></AdsRoasChartCard><AdsRoasChartCard title="ROAS per Platform"><PlatformRoasBarChart data={data.roasPerPlatform} /></AdsRoasChartCard><AdsRoasChartCard title="Distribusi Spending Ads"><RoasDonutChart data={data.spendingDistribution} formatValue={formatRupiahRingkas} /></AdsRoasChartCard><AdsRoasChartCard title="Sales per Platform"><RoasDonutChart data={data.salesPerPlatformDonut} formatValue={formatRupiahRingkas} /></AdsRoasChartCard></div><div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr]"><AdsRoasChartCard title="Perbandingan Spending dan Sales per Platform" className="xl:col-span-2"><SpendingSalesComparisonChart data={data.comparisonPerPlatform} formatValue={formatRupiahRingkas} /></AdsRoasChartCard><AdsRoasTableCard title="Top ADV by ROAS" columns={advColumns} rows={data.topAdv} rowKey={(r) => r.adv} /><AdsRoasTableCard title="Top Campaign by ROAS" columns={campaignColumns} rows={data.topCampaign} rowKey={(r) => r.campaign} /><AdsRoasTableCard title="Top Toko by Sales" columns={storeColumns} rows={data.topStore} rowKey={(r) => r.toko} /></div><div className="grid grid-cols-1 xl:grid-cols-4"><AdsRoasTableCard title="Data Perlu Review" columns={reviewColumns} rows={data.dataReview} rowKey={(r) => `${r.tipeData}-${r.masalah}`} className="xl:col-span-1" /></div></>;
 }
-function ChartCard({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) { return <section className="rounded-2xl bg-white p-5 shadow-sm"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="font-black text-slate-800">{title}</h2>{action}</div>{children}</section>; }
-function Bar({ value, max, color, label }: { value: number; max: number; color: string; label: string }) { return <span className="relative h-5 overflow-hidden rounded bg-slate-100"><span className={`block h-full rounded ${color}`} style={{ width: `${Math.max(2, value / max * 100)}%` }} /><span className="absolute inset-y-0 left-2 flex items-center text-[10px] font-bold text-white drop-shadow">{label}</span></span>; }
-function NoData() { return <p className="py-10 text-center text-sm font-semibold text-slate-400">Belum ada data pada rentang tanggal ini.</p>; }
-function EmptyAdsState({ uploading, uploadError, onFile }: { uploading: boolean; uploadError: string | null; onFile: (file?: File) => Promise<void> }) { return <section className="rounded-3xl bg-white p-8 text-center shadow-sm"><FileUp className="mx-auto size-12 text-brand-red" /><h2 className="mt-4 text-xl font-black">Belum ada data iklan</h2><p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">Upload file CSV Meta Ads untuk mengaktifkan laporan Platform Ads. Tahun laporan file contoh yang sedang dipakai adalah 2025.</p><label className="mt-6 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-brand-red px-5 py-3 text-sm font-bold text-white hover:opacity-90"><Upload className="size-4" />{uploading ? "Mengimport..." : "Upload CSV Meta Ads"}<input type="file" className="hidden" accept=".csv,text/csv" disabled={uploading} onChange={(event) => void onFile(event.target.files?.[0])} /></label>{uploadError && <p className="mt-3 text-sm font-semibold text-red-600">{uploadError}</p>}</section>; }
-function CampaignTable({ campaigns, onSelect }: { campaigns: Campaign[]; onSelect: (name: string) => void }) { return <div id="campaign-table" className="overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-sm"><thead><tr className="border-b text-xs uppercase tracking-wide text-slate-400"><th className="pb-3">Kampanye</th><th>Produk / ADV</th><th className="text-right">Belanja</th><th className="text-right">Klik</th><th className="text-right">Pembelian</th><th className="text-right">Nilai Konversi</th><th className="text-right">ROAS</th></tr></thead><tbody>{campaigns.map((row) => <tr key={row.campaign_name} onClick={() => onSelect(row.campaign_name)} className="cursor-pointer border-b border-slate-50 hover:bg-brand-red/5"><td className="py-3 font-bold text-slate-800">{row.campaign_name}</td><td className="text-slate-500">{row.product_label ?? "—"} · {row.advertiser_name ?? "—"}</td><td className="text-right">{rupiah(row.spend)}</td><td className="text-right">{number(row.link_clicks)}</td><td className="text-right">{number(row.purchases)}</td><td className="text-right">{rupiah(row.purchase_value)}</td><td className="text-right font-black text-brand-red">{roas(row.platform_roas)}</td></tr>)}</tbody></table></div>; }
-function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) { return <section className="rounded-2xl border border-brand-red/20 bg-white p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase text-brand-red">Detail Kampanye</p><h2 className="mt-1 text-lg font-black">{campaign.campaign_name}</h2></div><button onClick={onClose} className="text-sm font-bold text-slate-400">Tutup</button></div><div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4"><Kpi label="Belanja" value={rupiah(campaign.spend)} /><Kpi label="CTR" value={percent(campaign.ctr_link)} /><Kpi label="CPC" value={rupiah(campaign.cpc_link)} /><Kpi label="ROAS Platform" value={roas(campaign.platform_roas)} /></div><p className="mt-4 text-xs text-slate-500">ROAS Platform = Nilai Konversi Platform ÷ Belanja Iklan = {rupiah(campaign.purchase_value)} ÷ {rupiah(campaign.spend)}.</p></section>; }
-function ImportHistory({ batches, uploading, uploadError, onFile }: { batches: ImportBatch[]; uploading: boolean; uploadError: string | null; onFile: (file?: File) => Promise<void> }) { return <section className="rounded-2xl bg-white p-5 shadow-sm"><div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-black">Riwayat Import Meta Ads</h2><p className="text-sm text-slate-500">Tersimpan di database dan tetap tersedia setelah halaman dimuat ulang.</p></div><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-brand-red px-4 py-2.5 text-sm font-bold text-white"><Upload className="size-4" />{uploading ? "Mengimport..." : "Import CSV"}<input type="file" className="hidden" accept=".csv,text/csv" disabled={uploading} onChange={(event) => void onFile(event.target.files?.[0])} /></label></div>{uploadError && <p className="mb-3 text-sm font-semibold text-red-600">{uploadError}</p>}{!batches.length ? <NoData /> : <div className="overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm"><thead><tr className="border-b text-xs uppercase text-slate-400"><th className="pb-3">File</th><th>Produk</th><th>ADV</th><th>Periode</th><th className="text-right">Baris Berhasil</th><th>Status</th></tr></thead><tbody>{batches.map((batch) => <tr key={batch.batch_id} className="border-b border-slate-50"><td className="py-3 font-bold">{batch.file_name}</td><td>{batch.product_label ?? "—"}</td><td>{batch.advertiser_name ?? "—"}</td><td>{batch.report_month ?? "—"} {batch.report_year ?? ""}</td><td className="text-right">{number(batch.success_rows)} / {number(batch.total_rows)}</td><td><span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">{batch.status === "success" ? "Berhasil" : batch.status}</span></td></tr>)}</tbody></table></div>}</section>; }
+function PeriodDropdown() { return <select className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-600 outline-none" defaultValue="harian"><option value="harian">Harian</option><option value="mingguan">Mingguan</option></select>; }
+function AdvTabContent({ data }: { data: AdvPerformanceData }) { const columns: AdsRoasTableColumn<AdvRow>[] = [{ key: "adv", header: "ADV", render: (r) => <span className="font-extrabold text-slate-900">{r.adv}</span> }, { key: "platform", header: "Platform", render: (r) => r.platform }, { key: "spending", header: "Spending", align: "right", render: (r) => formatRupiahRingkas(r.spending) }, { key: "sales", header: "Sales", align: "right", render: (r) => formatRupiahRingkas(r.sales) }, { key: "order", header: "Order", align: "right", render: (r) => formatNumber(r.order) }, { key: "leads", header: "Leads", align: "right", render: (r) => formatNumber(r.leads) }, { key: "roas", header: "ROAS", align: "right", render: (r) => roasOrDash(r.roas, r.spending) }, { key: "cpo", header: "Cost per Order", align: "right", render: (r) => r.order > 0 ? formatRupiah(r.costPerOrder) : "-" }, { key: "closing", header: "Closing Rate", align: "right", render: (r) => r.leads > 0 ? formatPersen(r.closingRate, 1) : "-" }, { key: "status", header: "Status", render: (r) => <AdsRoasStatusBadge label={r.status} /> }]; return <><AdsRoasChartCard title="ADV Terbaik"><div className="rounded-2xl bg-emerald-50 p-4"><p className="text-xs font-bold text-emerald-700">ADV dengan ROAS tertinggi</p><p className="mt-1 text-2xl font-black text-emerald-800">{data.bestAdv.name}</p><p className="text-sm font-bold text-emerald-700">{data.bestAdv.roas > 0 ? `${data.bestAdv.roas.toFixed(2)}x` : "-"}</p></div></AdsRoasChartCard><div className="grid grid-cols-1 gap-4 xl:grid-cols-3"><AdsRoasChartCard title="ROAS per ADV"><VerticalValueBarChart data={data.roasPerAdv} formatValue={(v) => `${v.toFixed(2)}x`} /></AdsRoasChartCard><AdsRoasChartCard title="Spending per ADV"><VerticalValueBarChart data={data.spendingPerAdv} formatValue={formatRupiahRingkas} color="#2563EB" /></AdsRoasChartCard><AdsRoasChartCard title="Sales per ADV"><VerticalValueBarChart data={data.salesPerAdv} formatValue={formatRupiahRingkas} color="#7C3AED" /></AdsRoasChartCard></div><AdsRoasChartCard title="Detail ADV"><TableWithoutSeeAll columns={columns} rows={data.table} rowKey={(r) => r.adv} /></AdsRoasChartCard></>; }
+function CampaignTabContent({ data }: { data: CampaignPerformanceData }) { const columns: AdsRoasTableColumn<CampaignRow>[] = [{ key: "campaign", header: "Campaign", render: (r) => <span className="font-extrabold text-slate-900">{r.campaign}</span> }, { key: "platform", header: "Platform", render: (r) => r.platform }, { key: "adv", header: "ADV", render: (r) => r.adv }, { key: "spending", header: "Spending", align: "right", render: (r) => formatRupiahRingkas(r.spending) }, { key: "sales", header: "Sales", align: "right", render: (r) => formatRupiahRingkas(r.sales) }, { key: "order", header: "Order", align: "right", render: (r) => formatNumber(r.order) }, { key: "leads", header: "Leads", align: "right", render: (r) => formatNumber(r.leads) }, { key: "roas", header: "ROAS", align: "right", render: (r) => roasOrDash(r.roas, r.spending) }, { key: "cpo", header: "Cost per Order", align: "right", render: (r) => r.order > 0 ? formatRupiah(r.costPerOrder) : "-" }, { key: "status", header: "Status", render: (r) => <AdsRoasStatusBadge label={r.status} /> }]; return <><div className="grid grid-cols-1 gap-4 xl:grid-cols-3"><AdsRoasChartCard title="Top 10 Campaign by ROAS"><VerticalValueBarChart data={data.topByRoas.slice(0, 10)} formatValue={(v) => `${v.toFixed(2)}x`} /></AdsRoasChartCard><AdsRoasChartCard title="Top 10 Campaign by Sales"><VerticalValueBarChart data={data.topBySales.slice(0, 10)} formatValue={formatRupiahRingkas} color="#2563EB" /></AdsRoasChartCard><AdsRoasChartCard title="Campaign dengan ROAS Rendah"><TableWithoutSeeAll columns={[{ key: "campaign", header: "Campaign", render: (r) => r.campaign }, { key: "roas", header: "ROAS", align: "right", render: (r) => roasOrDash(r.roas, r.spending) }, { key: "status", header: "Status", render: (r) => <AdsRoasStatusBadge label={r.status} /> }]} rows={data.lowRoas} rowKey={(r) => r.campaign} /></AdsRoasChartCard></div><AdsRoasChartCard title="Detail Campaign"><TableWithoutSeeAll columns={columns} rows={data.table} rowKey={(r) => r.campaign} /></AdsRoasChartCard></>; }
+function StoreTabContent({ data }: { data: StorePerformanceData }) { const columns: AdsRoasTableColumn<StoreRow>[] = [{ key: "toko", header: "Toko", render: (r) => <span className="font-extrabold text-slate-900">{r.toko}</span> }, { key: "platform", header: "Platform", render: (r) => r.platform }, { key: "sales", header: "Sales", align: "right", render: (r) => formatRupiahRingkas(r.sales) }, { key: "order", header: "Order", align: "right", render: (r) => formatNumber(r.order) }, { key: "produk", header: "Produk Terlaris", render: (r) => <span className="text-slate-500">{r.produkTerlaris}</span> }, { key: "roas", header: "ROAS", align: "right", render: (r) => `${r.roas.toFixed(2)}x` }, { key: "status", header: "Status", render: (r) => <AdsRoasStatusBadge label={r.status} /> }]; return <><div className="grid grid-cols-1 gap-4 xl:grid-cols-3"><AdsRoasChartCard title="Sales per Toko"><VerticalValueBarChart data={data.salesPerStore} formatValue={formatRupiahRingkas} /></AdsRoasChartCard><AdsRoasChartCard title="Order per Toko"><VerticalValueBarChart data={data.orderPerStore} formatValue={formatNumber} color="#2563EB" /></AdsRoasChartCard><AdsRoasChartCard title="Kontribusi Sales Toko"><RoasDonutChart data={data.salesContributionDonut} formatValue={formatRupiahRingkas} /></AdsRoasChartCard></div><AdsRoasChartCard title="Detail Toko"><TableWithoutSeeAll columns={columns} rows={data.table} rowKey={(r) => r.toko} /></AdsRoasChartCard></>; }
+function ReviewTabContent({ data }: { data: DataReviewData }) { const columns: AdsRoasTableColumn<DataReviewItem>[] = [{ key: "tipe", header: "Tipe Data", render: (r) => r.tipeData }, { key: "platform", header: "Platform", render: (r) => r.platform ?? "-" }, { key: "masalah", header: "Masalah", render: (r) => <span className="font-extrabold text-slate-900">{r.masalah}</span> }, { key: "dampak", header: "Dampak ke Laporan", render: (r) => <span className="text-slate-500">{r.dampak}</span> }, { key: "aksi", header: "Rekomendasi Aksi", render: (r) => <span className="text-slate-500">{r.rekomendasiAksi}</span> }, { key: "prioritas", header: "Prioritas", render: (r) => <AdsRoasStatusBadge label={r.prioritas} tone={PRIORITY_TONE[r.prioritas]} /> }]; return <><div className="grid grid-cols-1 gap-4 xl:grid-cols-2"><AdsRoasChartCard title="Jenis Issue Data"><RoasDonutChart data={data.issueTypeDonut} formatValue={formatNumber} /></AdsRoasChartCard><AdsRoasChartCard title="Jumlah Issue per Tipe Data"><HorizontalValueBars data={data.issuePerType.map((i) => ({ label: i.name, value: i.value }))} formatValue={formatNumber} /></AdsRoasChartCard></div><AdsRoasChartCard title="Data Review"><TableWithoutSeeAll columns={columns} rows={data.table} rowKey={(r) => `${r.tipeData}-${r.masalah}`} /></AdsRoasChartCard></>; }
+function TableWithoutSeeAll<T>({ columns, rows, rowKey }: { columns: AdsRoasTableColumn<T>[]; rows: T[]; rowKey: (row: T) => string }) { if (rows.length === 0) return <p className="rounded-2xl bg-slate-50 p-6 text-center text-xs font-semibold text-slate-400">Belum ada data untuk filter ini.</p>; return <div className="overflow-x-auto"><table className="w-full whitespace-nowrap text-left text-sm"><thead><tr className="border-b border-slate-100 text-slate-400">{columns.map((col) => <th key={col.key} className={`pb-2 pr-4 text-xs font-bold uppercase tracking-[0.02em] ${col.align === "right" ? "text-right" : ""}`}>{col.header}</th>)}</tr></thead><tbody className="divide-y divide-slate-50 font-medium text-slate-700">{rows.map((row) => <tr key={rowKey(row)}>{columns.map((col) => <td key={col.key} className={`py-3 pr-4 ${col.align === "right" ? "text-right" : ""}`}>{col.render(row)}</td>)}</tr>)}</tbody></table></div>; }

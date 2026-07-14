@@ -14,7 +14,9 @@ interface ProductRow {
   id: string;
   name: string;
   sku: string;
+  category: string;
   original: string;
+  alias?: string;
   qty: number;
   value: number;
   status: string;
@@ -27,13 +29,16 @@ const notes = [
   "Nama asli dari data lama tetap disimpan agar bisa ditelusuri kembali.",
 ];
 
+// Qty dan Nilai adalah hasil hitung transaksi, jadi tidak boleh diubah manual.
 const editFields: EditField<ProductRow>[] = [
   { key: "id", label: "ID", readOnly: true },
   { key: "name", label: "Produk Final" },
   { key: "sku", label: "SKU" },
-  { key: "original", label: "Nama Asli" },
-  { key: "qty", label: "Qty", type: "number" },
-  { key: "value", label: "Nilai", type: "number" },
+  { key: "category", label: "Kategori" },
+  { key: "original", label: "Nama Asli dari Data", readOnly: true },
+  { key: "alias", label: "Alias Tambahan (pisah ;)" },
+  { key: "qty", label: "Qty", type: "number", readOnly: true },
+  { key: "value", label: "Nilai", type: "number", readOnly: true },
   { key: "status", label: "Status" },
 ];
 
@@ -60,19 +65,36 @@ export function ProdukSection() {
     ];
   }, [allRows]);
 
-  const saveRow = (updated: ProductRow) => {
-    updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+  const saveRow = async (updated: ProductRow) => {
+    const res = await fetch(`/api/master/products/${encodeURIComponent(updated.id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: updated.name, sku: updated.sku, category: updated.category, original: updated.alias, status: updated.status }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      window.alert(data.error ?? "Gagal menyimpan mapping produk.");
+      return;
+    }
+    updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)), { persisted: true });
     setEditingRow(null);
   };
-  const deleteRow = (id: string) => {
-    if (!window.confirm("Hapus data produk ini dari tampilan sementara?")) return;
-    updateRows((current) => current.filter((row) => row.id !== id));
+  const deleteRow = async (id: string) => {
+    if (!window.confirm("Arsipkan produk ini? Data tidak dihapus permanen.")) return;
+    const res = await fetch(`/api/master/products/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      window.alert(data.error ?? "Gagal mengarsipkan produk.");
+      return;
+    }
+    updateRows((current) => current.filter((row) => row.id !== id), { persisted: true });
   };
 
   const columns: MasterColumn<ProductRow>[] = [
     { key: "id", label: "ID", tone: "muted" },
     { key: "name", label: "Produk Final", tone: "strong" },
     { key: "sku", label: "SKU" },
+    { key: "category", label: "Kategori" },
     { key: "original", label: "Nama Asli dari Data" },
     { key: "qty", label: "Qty", align: "right", render: (row) => formatNumber(row.qty) },
     { key: "value", label: "Nilai", align: "right", tone: "strong", render: (row) => formatRupiah(row.value) },
@@ -134,6 +156,7 @@ export function ProdukSection() {
           fields={editFields}
           onClose={() => setEditingRow(null)}
           onSave={saveRow}
+          note="Kategori dan SKU tersimpan ke database. Nama asli dikunci; masukkan alias baru bila perlu."
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 import { CheckCircle2, ShieldCheck, ShoppingCart, Target, TrendingUp } from "lucide-react";
 
 interface SalesOrderCenterHeroProps {
-  stats: { label: string; value: string; deltaPct: number }[];
+  stats: { label: string; value: string; deltaPct?: number }[];
 }
 
 /** Hero Sales & Order Center — mengikuti mockup: pill "SALES MODULE", judul besar
@@ -63,19 +63,16 @@ export function SalesOrderCenterHero({ stats }: SalesOrderCenterHeroProps) {
           <div className="absolute -left-8 top-0 flex w-[168px] flex-col gap-1 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-lg shadow-slate-200/60">
             <p className="text-[11px] font-semibold text-slate-500">{stats[0]?.label}</p>
             <p className="text-lg font-black text-slate-900">{stats[0]?.value}</p>
-            <p className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600">▲ {stats[0]?.deltaPct.toFixed(1)}%</p>
           </div>
 
           <div className="absolute -right-6 top-10 flex w-[132px] flex-col gap-1 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-lg shadow-slate-200/60">
             <p className="text-[11px] font-semibold text-slate-500">{stats[2]?.label}</p>
             <p className="text-lg font-black text-slate-900">{stats[2]?.value}</p>
-            <p className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600">▲ {stats[2]?.deltaPct.toFixed(1)}%</p>
           </div>
 
           <div className="absolute -left-12 bottom-2 flex w-[150px] flex-col gap-1 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-lg shadow-slate-200/60">
             <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500"><CheckCircle2 className="size-3.5 text-emerald-500" />{stats[1]?.label}</p>
             <p className="text-lg font-black text-slate-900">{stats[1]?.value}</p>
-            <p className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600">▲ {stats[1]?.deltaPct.toFixed(1)}%</p>
           </div>
         </div>
       </div>

@@ -172,6 +172,18 @@ def extract_city(address, fallback=""):
     text = clean_text(address)
     if not text:
         return ""
+    # Format marketplace Inggris "<City> City, <Province>[, Indonesia]" / "<X> Regency, <Province>".
+    # Presisi tinggi: 'City/Regency' harus diikuti koma + nama provinsi.
+    m = re.search(
+        r"[,;]\s*([A-Za-z .'-]{3,35}?)\s+(?:city|regency)\s*,\s*"
+        r"(?:west |central |east |north |south |southeast )?"
+        r"(?:java|sumatra|sumatera|kalimantan|sulawesi|nusa tenggara|papua|jakarta|banten|"
+        r"bali|aceh|riau|jambi|lampung|bengkulu|gorontalo|maluku|yogyakarta|jawa \w+|dki jakarta)\b",
+        text, re.I)
+    if m:
+        got = _clean_city_result(title_city(m.group(1)))
+        if got and got.lower() not in ("diy", "dki"):
+            return got
     m = re.search(r"(?:kabupaten\s*/\s*kota|kab\.?|kabupaten|kota)\s*[:\-]?\s*([A-Za-z.'\s]{3,45})", text, re.I)
     if m:
         city = re.split(r",|\b(provinsi|jawa|sumatera|sumatra|sulawesi|kalimantan|bali|banten|ntb|nusa|maluku|papua|lampung|jambi|riau|aceh)\b", m.group(1), flags=re.I)[0]

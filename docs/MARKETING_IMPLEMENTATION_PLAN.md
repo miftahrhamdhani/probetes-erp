@@ -86,6 +86,23 @@ Perilaku:
 - Empty/loading/error state tersedia.
 - ROAS ERP, set iklan, iklan individu, dan atribusi ERP tampil disabled dengan alasan nyata.
 
+### Sales & Order
+
+Halaman `/marketing/sales-order/overview` sudah memakai database asli dan `DateRangePicker` URL (`start_date`/`end_date`), tanpa fallback data mock.
+
+Endpoint:
+
+- `GET /api/marketing/sales-summary`
+- `GET /api/marketing/sales-trend`
+- `GET /api/marketing/sales-by-channel`
+- `GET /api/marketing/sales-by-product`
+- `GET /api/marketing/sales-orders`
+- `GET /api/marketing/sales-orders/:id`
+
+Metric live: total pesanan/revenue/qty/AOV, pelanggan unik/repeat, tren, channel, produk, CS, divisi, dan retur berbasis data pengiriman. Semua pesanan valid selalu memakai `orders.orders.flag = 'valid'`; revenue pesanan tidak pernah dihitung setelah join langsung ke item.
+
+Metric `paid_order_rate`, `net_revenue`, dan `margin` bertanda parsial karena data pembayaran/finance belum lengkap; `cancel_rate` tidak tersedia karena nilai cancel tidak konsisten. KPI total/revenue serta channel dan produk membuka daftar pesanan valid terfilter.
+
 ### Source Performance
 
 Tab **Source Performance** pada `/marketing/ads-roas` sudah membaca pesanan ERP valid dari database (bukan atribusi iklan).
@@ -140,8 +157,8 @@ Semua pembagian aman: penyebut `0` menghasilkan `null`, bukan `NaN` atau `Infini
 
 ## Sisa Pekerjaan
 
-1. Membuat dan menyambungkan endpoint live Sales & Order, CRM, RFM, Cohort, Frequency, Retention, dan Source Coverage.
-2. Menerapkan `DateRangePicker` pada semua halaman Marketing selain Iklan & ROAS.
-3. Menambahkan mapping campaign/UTM/click_id ke order ERP untuk membuka ERP ROAS.
-4. Menambah parser laporan Meta yang memuat adset/ad dan laporan harian bila file sumber tersedia.
-5. Menambah cakupan kualitas sumber (nomor HP/lokasi/produk/CS) serta drilldown masalah nyata.
+1. Memigrasikan laporan Sales & Order lain (produk, channel, CS, status/COD, retur) dari mock ke endpoint live yang sesuai.
+2. Membuat dan menyambungkan CRM, RFM, Cohort, Frequency, Retention, dan Source Coverage.
+3. Menerapkan `DateRangePicker` pada semua halaman Marketing selain Iklan & ROAS dan Sales Overview.
+4. Menambahkan mapping campaign/UTM/click_id ke order ERP untuk membuka ERP ROAS.
+5. Menambah parser laporan Meta yang memuat adset/ad dan laporan harian bila file sumber tersedia.

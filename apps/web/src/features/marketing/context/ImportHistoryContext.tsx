@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { type ImportHistoryEntry, seedHistory } from "@/features/marketing/lib/importHistory";
+import { type ImportHistoryEntry } from "@/features/marketing/lib/importHistory";
 
 interface ImportHistoryContextValue {
   history: ImportHistoryEntry[];
@@ -10,12 +10,10 @@ interface ImportHistoryContextValue {
 
 const ImportHistoryContext = createContext<ImportHistoryContextValue | null>(null);
 
-/** Menyimpan riwayat import (Data Pesanan & Spending Ads) di memori browser, dibagi
- * antar halaman di dalam /marketing (Import, Iklan & ROAS, dst) — TIDAK ke database.
- * Reset kalau halaman di-refresh penuh; itu memang sengaja sesuai keputusan project
- * (belum ada backend penyimpanan import). */
+/** Context kompatibilitas untuk halaman Marketing lama. Flow import yang baru
+ * mengambil riwayat persisten langsung dari API PostgreSQL tanpa seed dummy. */
 export function ImportHistoryProvider({ children }: { children: ReactNode }) {
-  const [history, setHistory] = useState<ImportHistoryEntry[]>(seedHistory);
+  const [history, setHistory] = useState<ImportHistoryEntry[]>([]);
   return (
     <ImportHistoryContext.Provider value={{ history, setHistory }}>
       {children}
@@ -24,7 +22,7 @@ export function ImportHistoryProvider({ children }: { children: ReactNode }) {
 }
 
 export function useImportHistory() {
-  const ctx = useContext(ImportHistoryContext);
-  if (!ctx) throw new Error("useImportHistory harus dipakai di dalam ImportHistoryProvider");
-  return ctx;
+  const context = useContext(ImportHistoryContext);
+  if (!context) throw new Error("useImportHistory harus dipakai di dalam ImportHistoryProvider");
+  return context;
 }

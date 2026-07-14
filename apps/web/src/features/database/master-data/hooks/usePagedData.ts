@@ -28,8 +28,10 @@ export function usePagedData<T extends object>(
   const [dateFrom, setDateFromState] = useState<Record<string, string>>({});
   const [dateTo, setDateToState] = useState<Record<string, string>>({});
 
+  const [reloadToken, setReloadToken] = useState(0);
   useEffect(() => {
     let alive = true;
+    setError(false);
     fetch(url)
       .then((res) => {
         if (!res.ok) throw new Error(String(res.status));
@@ -44,7 +46,8 @@ export function usePagedData<T extends object>(
     return () => {
       alive = false;
     };
-  }, [url]);
+  }, [url, reloadToken]);
+  const reload = () => setReloadToken((value) => value + 1);
 
   const searchKeyId = searchKeys.join("|");
 
@@ -134,9 +137,12 @@ export function usePagedData<T extends object>(
     setSortState("");
     setPage(1);
   };
-  const updateRows = (updater: (rows: T[]) => T[]) => {
+  // persisted=true → perubahan sudah tersimpan ke database (lewat API), jadi
+  // banner "hanya tampilan sementara" TIDAK dimunculkan. Default (mock lokal)
+  // tetap memunculkan banner.
+  const updateRows = (updater: (rows: T[]) => T[], opts?: { persisted?: boolean }) => {
     setAllRows((current) => (current ? updater(current) : current));
-    setModified(true);
+    if (!opts?.persisted) setModified(true);
     setPage(1);
   };
   const hasActiveControls = Boolean(
@@ -176,6 +182,7 @@ export function usePagedData<T extends object>(
     setSort,
     resetControls,
     updateRows,
+    reload,
     hasActiveControls,
     distinct,
   };

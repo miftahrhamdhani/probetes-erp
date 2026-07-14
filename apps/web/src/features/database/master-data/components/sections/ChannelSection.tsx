@@ -15,6 +15,7 @@ interface ChannelRow {
   name: string;
   type: string;
   original: string;
+  alias?: string;
   orders: number;
   value: number;
   status: string;
@@ -45,24 +46,15 @@ const channelEditFields: EditField<ChannelRow>[] = [
   { key: "id", label: "ID", readOnly: true },
   { key: "name", label: "Channel" },
   { key: "type", label: "Jenis" },
-  { key: "original", label: "Nama Asli" },
-  { key: "orders", label: "Pesanan", type: "number" },
-  { key: "value", label: "Nilai", type: "number" },
-  { key: "status", label: "Status" },
-];
-
-const mitraEditFields: EditField<MitraRow>[] = [
-  { key: "id", label: "ID", readOnly: true },
-  { key: "name", label: "Mitra" },
-  { key: "original", label: "Nama Asli" },
-  { key: "orders", label: "Pesanan", type: "number" },
-  { key: "value", label: "Nilai", type: "number" },
+  { key: "original", label: "Nama Asli dari Data", readOnly: true },
+  { key: "alias", label: "Alias Tambahan (pisah ;)" },
+  { key: "orders", label: "Pesanan", type: "number", readOnly: true },
+  { key: "value", label: "Nilai", type: "number", readOnly: true },
   { key: "status", label: "Status" },
 ];
 
 export function ChannelSection() {
   const [editingChannel, setEditingChannel] = useState<ChannelRow | null>(null);
-  const [editingMitra, setEditingMitra] = useState<MitraRow | null>(null);
   const [divisiRows, setDivisiRows] = useState<DivisiRow[]>([]);
   const channels = usePagedData<ChannelRow>("/api/master/channels", ["id", "name", "type", "original"]);
   const mitra = usePagedData<MitraRow>("/api/master/mitra", ["id", "name", "original"]);
@@ -91,21 +83,29 @@ export function ChannelSection() {
     ];
   }, [channels.allRows, mitra.allRows, divisiRows]);
 
-  const saveChannel = (updated: ChannelRow) => {
-    channels.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+  const saveChannel = async (updated: ChannelRow) => {
+    const res = await fetch(`/api/master/channels/${encodeURIComponent(updated.id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: updated.name, type: updated.type, original: updated.alias, status: updated.status }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      window.alert(data.error ?? "Gagal menyimpan mapping channel.");
+      return;
+    }
+    channels.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)), { persisted: true });
     setEditingChannel(null);
   };
-  const deleteChannel = (id: string) => {
-    if (!window.confirm("Hapus data channel ini dari tampilan sementara?")) return;
-    channels.updateRows((current) => current.filter((row) => row.id !== id));
-  };
-  const saveMitra = (updated: MitraRow) => {
-    mitra.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
-    setEditingMitra(null);
-  };
-  const deleteMitra = (id: string) => {
-    if (!window.confirm("Hapus data mitra ini dari tampilan sementara?")) return;
-    mitra.updateRows((current) => current.filter((row) => row.id !== id));
+  const deleteChannel = async (id: string) => {
+    if (!window.confirm("Arsipkan channel ini? Data tidak dihapus permanen.")) return;
+    const res = await fetch(`/api/master/channels/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      window.alert(data.error ?? "Gagal mengarsipkan channel.");
+      return;
+    }
+    channels.updateRows((current) => current.filter((row) => row.id !== id), { persisted: true });
   };
 
   const channelColumns: MasterColumn<ChannelRow>[] = [
@@ -206,12 +206,6 @@ export function ChannelSection() {
                 />
               </>
             }
-            renderActions={(row) => (
-              <>
-                <RowActionButton label="Edit" onClick={() => setEditingMitra(row)} />
-                <RowActionButton label="Hapus" danger onClick={() => deleteMitra(row.id)} />
-              </>
-            )}
           />
         </DataPanel>
 
@@ -242,15 +236,7 @@ export function ChannelSection() {
           fields={channelEditFields}
           onClose={() => setEditingChannel(null)}
           onSave={saveChannel}
-        />
-      )}
-      {editingMitra && (
-        <EditRecordModal
-          title="Edit Mitra"
-          record={editingMitra}
-          fields={mitraEditFields}
-          onClose={() => setEditingMitra(null)}
-          onSave={saveMitra}
+          note="Nama channel dan jenis tersimpan ke database. Nama asli dikunci; masukkan alias baru bila perlu."
         />
       )}
     </div>
