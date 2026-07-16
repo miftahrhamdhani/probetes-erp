@@ -3,7 +3,7 @@ export type MasterDataSectionId =
   | "cohort"
   | "produk"
   | "channel"
-  | "cs-tim"
+  | "karyawan"
   | "ekspedisi";
 
 export type MasterDataIconKey =

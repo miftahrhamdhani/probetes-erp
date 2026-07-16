@@ -1,4 +1,19 @@
 CLAUDE.md
+
+0. Dokumen Acuan Utama
+PRD utama dan Single Source of Truth (SSOT) project adalah:
+```txt
+docs/PRD_BLUEPRINT_SSOT.md
+```
+Urutan eksekusi dan status task mengikuti:
+```txt
+docs/ROADMAP_PENGERJAAN.md
+docs/PROGRESS.md
+```
+Dokumen lama sudah diarsipkan di `docs/archive/` dan tidak boleh dijadikan acuan implementasi.
+Jika ada contoh model konseptual di PRD, implementasi database tetap wajib memakai SQL terparameterisasi melalui `pg` mentah (bukan Prisma/ORM).
+---
+
 1. Tentang Project
 Project ini adalah Probetes ERP, yaitu aplikasi ERP internal untuk membantu operasional Probetes.
 Aplikasi ini dibuat untuk menyatukan data dan pekerjaan yang sebelumnya tersebar di banyak tempat, seperti Google Sheet, Looker Studio, marketplace, CS, CRM, data cohort, data order, data pengiriman, pembayaran, dan laporan internal.

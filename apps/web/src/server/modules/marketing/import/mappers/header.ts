@@ -23,14 +23,28 @@ export function field(row: Record<string, string>, header: string | null): strin
 
 /** Deteksi platform dari header untuk peringatan salah-file. */
 export function detectPlatformMismatch(headers: string[], selected: ImportPlatform): string | null {
-  const joined = headers.map(normalizeImportHeader).join(" ");
-  const detected = joined.includes("tiktok")
-    ? "tiktok"
-    : joined.includes("shopee")
-      ? "shopee"
-      : joined.includes("facebook") || joined.includes("meta ads")
-        ? "meta"
-        : null;
+  const normalized = new Set(headers.map(normalizeImportHeader));
+  const signatures: Record<ImportPlatform, readonly string[]> = {
+    tiktok: [
+      "order id", "order amount", "seller sku", "created time", "recipient",
+      "phone", "purchase channel",
+    ],
+    shopee: [
+      "no pesanan", "waktu pesanan dibuat", "total pembayaran", "username pembeli",
+      "nama penerima", "efektifitas iklan", "kode produk",
+    ],
+    meta: [
+      "business name", "gross revenue", "confirmed time", "is from form", "utm campaign",
+      "awal pelaporan", "akhir pelaporan", "nama kampanye", "jumlah yang dibelanjakan idr",
+    ],
+  };
+  const scores = (Object.keys(signatures) as ImportPlatform[]).map((platform) => ({
+    platform,
+    score: signatures[platform].filter((header) => normalized.has(header)).length,
+  })).sort((left, right) => right.score - left.score);
+  const detected = scores[0]!.score >= 3 && scores[0]!.score > scores[1]!.score
+    ? scores[0]!.platform
+    : null;
   if (detected && detected !== selected) {
     return `Header file terdeteksi sebagai ${PLATFORM_LABEL[detected]}, bukan ${PLATFORM_LABEL[selected]}.`;
   }

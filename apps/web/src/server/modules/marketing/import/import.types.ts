@@ -1,5 +1,19 @@
 export type ImportPlatform = "tiktok" | "shopee" | "meta";
 export type MarketplaceImportType = "ads" | "order";
+
+/** Kontrak kolom baku lintas preview aktif, riwayat, dan ekspor CSV. */
+export const NORMALIZED_IMPORT_COLUMNS: Record<MarketplaceImportType, readonly string[]> = {
+  ads: [
+    "Tanggal", "Platform", "ADV", "Campaign", "Spending", "Impression / Tayangan", "Click", "CTR (%)",
+    "Konversi / Pesanan", "Nilai Konversi Platform", "Biaya per Pesanan (CPA)", "ROAS Platform",
+  ],
+  order: [
+    "Tanggal Pesanan", "Platform", "Toko", "No Invoice", "No Resi", "Customer", "No HP", "Email", "Produk",
+    "Qty", "Harga Produk", "Subtotal Produk", "Total Bayar", "Status Pesanan", "Status Pembayaran", "Metode Bayar",
+    "Ekspedisi", "Kota/Kabupaten", "Provinsi", "Tipe Pelanggan",
+  ],
+};
+
 export type ImportValidationStatus = "valid" | "review" | "error" | "duplicate";
 export type ImportBatchStatus =
   | "preview"

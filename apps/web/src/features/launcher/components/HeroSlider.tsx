@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { heroSlides } from "../config/heroSlides";
@@ -53,10 +54,13 @@ export function HeroSlider() {
       onTouchEnd={(event) => handleDragEnd(event.changedTouches[0]?.clientX ?? 0)}
       onTouchStart={(event) => handleDragStart(event.changedTouches[0]?.clientX ?? 0)}
     >
-      <img
+      <Image
         alt={`${activeSlide.title} hero banner`}
         className="h-full w-full object-contain"
         draggable={false}
+        fill
+        priority
+        sizes="100vw"
         src={activeSlide.src}
       />
 

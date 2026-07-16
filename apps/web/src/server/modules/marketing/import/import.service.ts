@@ -2,7 +2,9 @@ import type { PoolClient } from "pg";
 import { logChange } from "@/lib/audit";
 import { pool } from "@/server/common/db";
 import { ImportFileError, parseMarketplaceImport } from "./parsers";
-import { normalizeImportPhone } from "./utils";
+import { deriveAdsMetrics } from "./normalizers/ads-metrics";
+import { normalizeImportHeader, normalizeImportPhone, parseImportNumber } from "./utils";
+import { hasInconsistentOrderHeader } from "./validators/order-group";
 import * as repo from "./import.repository";
 import type {
   AdminInputerResult,
@@ -141,22 +143,112 @@ function applyValidationDisplay(row: ParsedImportRow) {
   row.display["Catatan Validasi"] = row.notes.join(" ") || "Data siap disimpan.";
 }
 
+function groupParsedOrderRows(rows: ParsedImportRow[]): ParsedImportRow[][] {
+  const groups = new Map<string, ParsedImportRow[]>();
+  for (const row of rows) {
+    const invoice = String(row.parsed.invoice ?? "").trim().toLocaleLowerCase("id-ID");
+    const key = invoice || `__row_${row.rowNumber}`;
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+function enforceAtomicOrderValidation(rows: ParsedImportRow[]): void {
+  for (const group of groupParsedOrderRows(rows)) {
+    const candidateRows = group.filter((row) => row.status !== "duplicate");
+    const inconsistent = hasInconsistentOrderHeader(candidateRows.map((row) => row.parsed));
+    if (inconsistent) {
+      for (const row of candidateRows) {
+        addRowIssue(row, "review", "Data header untuk invoice yang sama tidak konsisten; pesanan tidak akan disimpan sebagian.");
+      }
+    }
+    const hasBlockedItem = candidateRows.some((row) => row.status === "review" || row.status === "error");
+    if (hasBlockedItem) {
+      for (const row of candidateRows) {
+        if (row.status === "valid") {
+          addRowIssue(row, "review", "Item lain pada invoice yang sama belum valid; seluruh pesanan menunggu perbaikan.");
+        }
+      }
+    }
+  }
+}
+
+interface ProductLookupEntry {
+  lookup_name: string;
+  product_id: string;
+  product_name: string;
+}
+
+interface CourierLookupEntry {
+  courier_id: string;
+  courier_name: string;
+  lookup_name: string;
+}
+
+function matchProduct(productInput: string, products: ProductLookupEntry[]): ProductLookupEntry | null {
+  const source = normalizeImportHeader(productInput);
+  if (!source) return null;
+  const exact = products.find((product) => normalizeImportHeader(product.lookup_name) === source);
+  if (exact) return exact;
+  const sourceTokens = new Set(source.split(" ").filter(Boolean));
+  const candidates = products.map((product) => {
+    const alias = normalizeImportHeader(product.lookup_name);
+    const tokens = alias.split(" ").filter(Boolean);
+    const tokenMatch = tokens.length > 0 && tokens.every((token) => sourceTokens.has(token));
+    const phraseMatch = alias.length >= 5 && source.includes(alias);
+    return {
+      product,
+      score: tokenMatch || phraseMatch ? (tokens.length * 1_000) + alias.length : -1,
+    };
+  }).filter((candidate) => candidate.score >= 0)
+    .sort((left, right) => right.score - left.score);
+  if (!candidates[0]) return null;
+  if (candidates[1] && candidates[1].score === candidates[0].score
+    && candidates[1].product.product_id !== candidates[0].product.product_id) return null;
+  return candidates[0].product;
+}
+
+function matchCourier(courierInput: string, couriers: CourierLookupEntry[]): CourierLookupEntry | null {
+  const source = normalizeImportHeader(courierInput);
+  if (!source) return null;
+  const exact = couriers.find((courier) => normalizeImportHeader(courier.lookup_name) === source);
+  if (exact) return exact;
+  const candidates = couriers.map((courier) => {
+    const alias = normalizeImportHeader(courier.lookup_name);
+    const matched = alias.length >= 3 && (source.includes(alias) || alias.includes(source));
+    return { courier, score: matched ? alias.length : -1 };
+  }).filter((candidate) => candidate.score >= 0)
+    .sort((left, right) => right.score - left.score);
+  if (!candidates[0]) return null;
+  if (candidates[1] && candidates[1].score === candidates[0].score
+    && candidates[1].courier.courier_id !== candidates[0].courier.courier_id) return null;
+  return candidates[0].courier;
+}
+
 async function enrichOrderRows(client: PoolClient, parsedFile: ParsedImportFile): Promise<void> {
   const products = await repo.loadProductLookup(client);
-  const productMap = new Map(products.rows.map((row) => [row.lookup_name, row.product_id]));
+  const couriers = await repo.loadCourierLookup(client);
   const invoices = parsedFile.rows.map((row) => String(row.parsed.invoice ?? "").trim()).filter(Boolean);
   const existingOrders = invoices.length ? await repo.loadExistingOrders(client, invoices) : { rows: [] as { order_id: string }[] };
   const existingIds = new Set(existingOrders.rows.map((row) => row.order_id));
 
   for (const row of parsedFile.rows) {
-    const productName = String(row.parsed.product ?? "").trim().toLocaleLowerCase("id-ID");
-    const productId = productMap.get(productName) ?? null;
-    row.parsed.productId = productId;
-    if (!productId && productName) addRowIssue(row, "review", "Produk belum memiliki mapping ke Data Utama.");
+    const productInput = String(row.parsed.product ?? "").trim();
+    const product = matchProduct(productInput, products.rows);
+    row.parsed.productId = product?.product_id ?? null;
+    if (product) row.display.Produk = product.product_name;
+    else if (productInput) addRowIssue(row, "review", "Produk belum memiliki mapping ke Data Utama.");
+    const courierInput = String(row.parsed.courier ?? "").trim();
+    const courier = matchCourier(courierInput, couriers.rows);
+    row.parsed.courierId = courier?.courier_id ?? null;
+    if (courier) row.display.Ekspedisi = courier.courier_name;
     const invoice = String(row.parsed.invoice ?? "").trim();
     if (invoice && existingIds.has(invoice)) addRowIssue(row, "duplicate", "No invoice sudah ada di database.");
-    applyValidationDisplay(row);
   }
+  enforceAtomicOrderValidation(parsedFile.rows);
+  for (const row of parsedFile.rows) applyValidationDisplay(row);
 }
 
 async function enrichAdsRows(client: PoolClient, parsedFile: ParsedImportFile, platform: ImportPlatform, advName: string) {
@@ -174,7 +266,12 @@ async function enrichAdsRows(client: PoolClient, parsedFile: ParsedImportFile, p
 }
 
 function toPreviewRows(rows: ParsedImportRow[]): ImportPreviewRow[] {
-  return rows.map((row) => ({ rowNumber: row.rowNumber, status: row.status, notes: row.notes, data: { ...row.raw, ...row.display } }));
+  return rows.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: row.status,
+    notes: row.notes,
+    data: { ...row.display },
+  }));
 }
 
 export async function createImportPreview(input: {
@@ -286,29 +383,58 @@ export async function commitImportBatch(batchId: string, actor = "app"): Promise
 
     let importedRows = 0;
     let runtimeFailures = 0;
-    for (const row of rows) {
-      await client.query("SAVEPOINT promote_import_row");
-      try {
-        let promotedId: string;
-        if (batch.import_type === "ads") {
-          promotedId = await repo.promoteAdsRow(client, batch, row);
-        } else {
-          const channelId = await repo.findChannelId(client, batch.platform);
-          if (!channelId) throw new Error("Channel platform belum terpetakan.");
-          const customerId = await repo.findOrCreateCustomer(client, batch, row.parsed_data);
-          const orderId = await repo.insertOrderWithItem(client, batch, row.parsed_data, channelId, customerId);
-          if (!orderId) throw new ImportServiceError("No invoice sudah ada di database.", 409);
-          promotedId = orderId;
+    if (batch.import_type === "ads") {
+      for (const row of rows) {
+        await client.query("SAVEPOINT promote_import_row");
+        try {
+          const promotedId = await repo.promoteAdsRow(client, batch, row);
+          await repo.markRowPromoted(client, row.row_id, promotedId);
+          await client.query("RELEASE SAVEPOINT promote_import_row");
+          importedRows += 1;
+        } catch (error) {
+          await client.query("ROLLBACK TO SAVEPOINT promote_import_row");
+          const message = error instanceof Error ? error.message : "Kesalahan database.";
+          await repo.markRowFailure(client, row, message);
+          await client.query("RELEASE SAVEPOINT promote_import_row");
+          runtimeFailures += 1;
         }
-        await repo.markRowPromoted(client, row.row_id, promotedId);
-        await client.query("RELEASE SAVEPOINT promote_import_row");
-        importedRows += 1;
-      } catch (error) {
-        await client.query("ROLLBACK TO SAVEPOINT promote_import_row");
-        const message = error instanceof Error ? error.message : "Kesalahan database.";
-        await repo.markRowFailure(client, row, message);
-        await client.query("RELEASE SAVEPOINT promote_import_row");
-        runtimeFailures += 1;
+      }
+    } else {
+      const channelId = await repo.findChannelId(client, batch.platform);
+      if (!channelId) throw new ImportServiceError("Channel platform belum terpetakan.", 400);
+      const groups = new Map<string, repo.StagingRow[]>();
+      for (const row of rows) {
+        const invoice = String(row.parsed_data.invoice ?? "").trim().toLocaleLowerCase("id-ID");
+        const key = invoice || `__row_${row.row_id}`;
+        const group = groups.get(key) ?? [];
+        group.push(row);
+        groups.set(key, group);
+      }
+      for (const group of groups.values()) {
+        await client.query("SAVEPOINT promote_import_order");
+        try {
+          const primary = group[0]!;
+          const inconsistent = hasInconsistentOrderHeader(group.map((row) => row.parsed_data));
+          if (inconsistent) throw new Error("Data header item dalam invoice yang sama tidak konsisten.");
+          const customerId = await repo.findOrCreateCustomer(client, batch, primary.parsed_data);
+          const orderId = await repo.insertOrderWithItems(
+            client,
+            batch,
+            group.map((row) => row.parsed_data),
+            channelId,
+            customerId,
+          );
+          if (!orderId) throw new ImportServiceError("No invoice sudah ada di database.", 409);
+          for (const row of group) await repo.markRowPromoted(client, row.row_id, orderId);
+          await client.query("RELEASE SAVEPOINT promote_import_order");
+          importedRows += group.length;
+        } catch (error) {
+          await client.query("ROLLBACK TO SAVEPOINT promote_import_order");
+          const message = error instanceof Error ? error.message : "Kesalahan database.";
+          for (const row of group) await repo.markRowFailure(client, row, message);
+          await client.query("RELEASE SAVEPOINT promote_import_order");
+          runtimeFailures += group.length;
+        }
       }
     }
 
@@ -380,13 +506,44 @@ function asHistoryEntry(row: repo.BatchRow): ImportHistoryEntry {
   };
 }
 
-function asPreviewRow(row: repo.StagingRow): ImportPreviewRow {
+function historyNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  return typeof value === "string" ? parseImportNumber(value) : null;
+}
+
+function normalizeHistoryDisplay(
+  displayData: repo.HistoryPreviewRow["display_data"],
+  importType: MarketplaceImportType,
+): Record<string, string | number | null> {
+  const data = { ...displayData };
+  if (importType === "ads") {
+    const derived = deriveAdsMetrics({
+      clicks: historyNumber(data.Click),
+      conversions: historyNumber(data["Konversi / Pesanan"]),
+      impressions: historyNumber(data["Impression / Tayangan"]),
+      purchaseValue: historyNumber(data["Nilai Konversi Platform"]),
+      spend: historyNumber(data.Spending),
+    });
+    data["CTR (%)"] = derived.ctr;
+    data["Biaya per Pesanan (CPA)"] = derived.costPerOrder === null ? "-" : Math.round(derived.costPerOrder);
+    data["ROAS Platform"] = derived.platformRoas;
+  } else if (data["Subtotal Produk"] === undefined || data["Subtotal Produk"] === "-") {
+    const qty = historyNumber(data.Qty);
+    const unitPrice = historyNumber(data["Harga Produk"]);
+    data["Subtotal Produk"] = qty !== null && unitPrice !== null
+      ? Math.round(qty * unitPrice)
+      : data["Total Bayar"] ?? "-";
+  }
+  return data;
+}
+
+function asPreviewRow(row: repo.HistoryPreviewRow, importType: MarketplaceImportType): ImportPreviewRow {
   return {
     rowId: row.row_id,
     rowNumber: row.row_number,
     status: row.validation_status,
     notes: row.validation_notes ?? [],
-    data: { ...row.raw_data, ...row.display_data },
+    data: normalizeHistoryDisplay(row.display_data, importType),
   };
 }
 
@@ -399,8 +556,8 @@ export async function getImportHistory(limit = 20): Promise<ImportHistoryEntry[]
 export async function getImportHistoryDetail(batchId: string): Promise<ImportHistoryEntry> {
   const batches = await repo.findHistory(batchId);
   if (!batches[0]) throw new ImportServiceError("Riwayat import tidak ditemukan.", 404);
-  const rows = await repo.listBatchRows(batchId);
-  return { ...asHistoryEntry(batches[0]), rows: rows.map(asPreviewRow) };
+  const rows = await repo.listHistoryPreviewRows(batchId);
+  return { ...asHistoryEntry(batches[0]), rows: rows.map((row) => asPreviewRow(row, batches[0]!.import_type)) };
 }
 
 function asAdminInputerResult(row: Awaited<ReturnType<typeof repo.findAdminInputerOrders>>[number]): AdminInputerResult {

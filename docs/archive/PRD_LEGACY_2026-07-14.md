@@ -1,3 +1,8 @@
+# ARSIP — PROBETES ERP PRD (14 Juli 2026)
+
+> **Status:** dokumen historis, bukan acuan implementasi aktif.
+> Gunakan **[PRD_BLUEPRINT_SSOT.md](../PRD_BLUEPRINT_SSOT.md)** sebagai PRD utama dan Single Source of Truth project.
+
 # PROBETES ERP — PRD (Product Requirements Document)
 
 **Blueprint Detail Menu, Arsitektur, Workflow, Database, dan Roadmap Pengembangan**
@@ -8,8 +13,8 @@ Versi Revisi Detail — 14 Juli 2026
 > per fase termasuk HRIS dan AI Assistant.
 >
 > **Sifat dokumen:** blueprint/acuan. Eksekusi dilakukan bertahap per fase. Progres nyata
-> pengerjaan dilacak terpisah di **[PROGRESS.md](PROGRESS.md)** (papan status yang dicentang
-> tiap fitur selesai). Detail teknis tabel ada di **[ARSITEKTUR_DATABASE.md](ARSITEKTUR_DATABASE.md)**.
+> pengerjaan dilacak terpisah di **[PROGRESS.md](../PROGRESS.md)** (papan status yang dicentang
+> tiap fitur selesai). Detail teknis tabel ada di **[ARSITEKTUR_DATABASE.md](../ARSITEKTUR_DATABASE.md)**.
 
 | Informasi | Keterangan |
 |---|---|
@@ -348,7 +353,7 @@ Satu database `probetes_erp`, dipisah dengan schema per domain.
 | audit | Kualitas Data | Data quality checks, perubahan mapping, log audit data. |
 | system | Setting | Pengaturan aplikasi, backup, penomoran ID. |
 
-> Definisi tabel lengkap (DDL) tiap schema ada di **[ARSITEKTUR_DATABASE.md](ARSITEKTUR_DATABASE.md)**.
+> Definisi tabel lengkap (DDL) tiap schema ada di **[ARSITEKTUR_DATABASE.md](../ARSITEKTUR_DATABASE.md)**.
 
 ### 6.1 Prinsip Database Wajib
 - Satu database PostgreSQL; tiap domain dipisah schema.

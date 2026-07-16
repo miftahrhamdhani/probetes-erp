@@ -6,7 +6,7 @@ export const masterDataMenus = [
   { id: "pelanggan", title: "Pelanggan", icon: "users" },
   { id: "cohort", title: "Database Cohort", icon: "history" },
   { id: "produk", title: "Produk", icon: "package" },
-  { id: "channel", title: "Channel", icon: "globe" },
-  { id: "cs-tim", title: "CS / Tim", icon: "headphones" },
+  { id: "channel", title: "Channel/Mitra", icon: "globe" },
+  { id: "karyawan", title: "Data Karyawan", icon: "headphones" },
   { id: "ekspedisi", title: "Ekspedisi", icon: "truck" },
 ] satisfies MasterDataMenu[];

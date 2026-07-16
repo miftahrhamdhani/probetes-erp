@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { CSSProperties } from "react";
 import { cn } from "@/lib/cn";
 
@@ -30,12 +31,14 @@ export function ProbetesLogo({
 }: ProbetesLogoProps) {
   return (
     <div className={cn("flex min-w-0 items-center gap-2.5 sm:gap-3", className)} aria-label="Probetes ERP">
-      <img
+      <Image
         alt=""
         className={cn("shrink-0 object-contain", markClassName)}
         draggable={false}
+        height={220}
         src="/brand/probetes-mark.png"
         style={markSize[variant]}
+        width={220}
       />
 
       {showText ? (

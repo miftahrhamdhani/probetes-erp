@@ -3,6 +3,7 @@ import { parseCampaignTimestamp, parseImportDate, parseImportMonth, parseImportN
 import { escalateStatus, finalizeFile } from "../validators/row-status";
 import { ADS_ALIASES } from "./aliases";
 import { buildHeaderLookup, detectPlatformMismatch, field, findHeader } from "./header";
+import { deriveAdsMetrics } from "../normalizers/ads-metrics";
 
 /** Mapping + validasi baris Spending Ads ke bentuk ParsedImportFile. */
 export function mapAdsRows(
@@ -35,7 +36,8 @@ export function mapAdsRows(
     const reportDateRaw = field(raw, mappedHeaders.reportDate);
     const fileReportDate = parseImportDate(reportDateRaw);
     const reportEndDateRaw = field(raw, mappedHeaders.reportEndDate);
-    const fileReportEndDate = reportEndDateRaw ? parseImportDate(reportEndDateRaw) : fileReportDate;
+    const isOpenEnded = /^(?:tidak terbatas|ongoing|no end date)$/i.test(reportEndDateRaw);
+    const fileReportEndDate = reportEndDateRaw && !isOpenEnded ? parseImportDate(reportEndDateRaw) : fileReportDate;
     const usesMonthlyFallback = !mappedHeaders.reportDate && Boolean(reportMonth);
     const reportDate = fileReportDate ?? (usesMonthlyFallback ? reportMonth!.start : null);
     const reportEndDate = fileReportEndDate ?? (usesMonthlyFallback ? reportMonth!.end : reportDate);
@@ -52,7 +54,7 @@ export function mapAdsRows(
     } else if (usesMonthlyFallback) {
       notes.push(`Tanggal laporan memakai periode ${reportMonth!.label}; data diperlakukan sebagai agregat bulanan.`);
     }
-    if (reportEndDateRaw && !reportEndDate) {
+    if (reportEndDateRaw && !isOpenEnded && !reportEndDate) {
       status = escalateStatus(status, "error");
       notes.push("Format tanggal akhir tidak valid.");
     }
@@ -89,6 +91,13 @@ export function mapAdsRows(
     const clicks = number(mappedHeaders.clicks);
     const leads = number(mappedHeaders.leads);
     const purchaseValue = number(mappedHeaders.purchaseValue);
+    const { ctr, costPerOrder, platformRoas } = deriveAdsMetrics({
+      clicks,
+      conversions: leads,
+      impressions,
+      purchaseValue,
+      spend,
+    });
     const deliveryStatus = field(raw, mappedHeaders.status);
     const duplicateIdentity = usesMonthlyFallback ? adId : adId || adName || campaign;
     const duplicateKey = reportDate && duplicateIdentity
@@ -122,7 +131,10 @@ export function mapAdsRows(
       "Nilai Konversi Platform": purchaseValue === null ? "-" : Math.round(purchaseValue),
       "Impression / Tayangan": impressions,
       Click: clicks,
+      "CTR (%)": ctr,
       "Konversi / Pesanan": leads,
+      "Biaya per Pesanan (CPA)": costPerOrder === null ? "-" : Math.round(costPerOrder),
+      "ROAS Platform": platformRoas,
       Status: deliveryStatus || "-",
     };
     return {

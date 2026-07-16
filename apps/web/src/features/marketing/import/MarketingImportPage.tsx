@@ -17,20 +17,20 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useRowVirtualizer } from "@/features/database/master-data/hooks/useRowVirtualizer";
 import { DummyBanner } from "@/features/marketing/components/DummyBanner";
 import { MarketingBackButton } from "@/features/marketing/components/MarketingBackButton";
 import { MetaLogo, ShopeeLogo, SkalevLogo, TikTokLogo } from "@/features/marketing/components/BrandLogos";
-import type {
-  ImportCommitResponse,
-  ImportHistoryEntry,
-  ImportOptionsByPlatform,
-  ImportPlatform,
-  ImportPreviewResponse,
-  ImportPreviewRow,
-  ImportSourceOption,
-  ImportValidationStatus,
-  MarketplaceImportType,
+import {
+  NORMALIZED_IMPORT_COLUMNS,
+  type ImportCommitResponse,
+  type ImportHistoryEntry,
+  type ImportOptionsByPlatform,
+  type ImportPlatform,
+  type ImportPreviewResponse,
+  type ImportPreviewRow,
+  type ImportSourceOption,
+  type ImportValidationStatus,
+  type MarketplaceImportType,
 } from "@/server/modules/marketing/import/import.types";
 import {
   cancelMarketplaceImport,
@@ -49,8 +49,8 @@ import {
   ImportTypeCard,
   PanelHeader,
   PlatformCard,
-  ValidationBadge,
 } from "./ImportUi";
+import { NormalizedPreviewTable } from "./components/NormalizedPreviewTable";
 
 const PLATFORM_LABEL: Record<ImportPlatform, string> = {
   tiktok: "TikTok Shop",
@@ -124,15 +124,11 @@ export default function MarketingImportPage() {
   const previewTotalPages = Math.max(1, Math.ceil(filteredPreviewRows.length / previewRowsPerPage));
   const previewStart = (previewPage - 1) * previewRowsPerPage;
   const currentPreviewRows = filteredPreviewRows.slice(previewStart, previewStart + previewRowsPerPage);
-  const previewVirtualizer = useRowVirtualizer<HTMLDivElement>({ count: currentPreviewRows.length, rowHeight: 48 });
-  const visiblePreviewRows = currentPreviewRows.slice(previewVirtualizer.start, previewVirtualizer.end);
 
   const historyRows = historyDetail?.rows ?? [];
   const historyTotalPages = Math.max(1, Math.ceil(historyRows.length / historyRowsPerPage));
   const historyStart = (historyPage - 1) * historyRowsPerPage;
   const currentHistoryRows = historyRows.slice(historyStart, historyStart + historyRowsPerPage);
-  const historyVirtualizer = useRowVirtualizer<HTMLDivElement>({ count: currentHistoryRows.length, rowHeight: 48 });
-  const visibleHistoryRows = currentHistoryRows.slice(historyVirtualizer.start, historyVirtualizer.end);
 
   const refreshHistory = async () => setHistory(await fetchImportHistory());
 
@@ -310,7 +306,7 @@ export default function MarketingImportPage() {
     try {
       const detail = entry.rows ? entry : await fetchImportHistoryDetail(entry.id);
       const detailRows = detail.rows ?? [];
-      const columns = historyColumns(detailRows, detail.importType);
+      const columns = normalizedExportColumns(detail.importType);
       const exportRows = detailRows.map((row) => ({
         ...row.data,
         "Status Validasi": validationLabel(row.status),
@@ -438,22 +434,21 @@ export default function MarketingImportPage() {
           </select>
         </div>
       </div>
-      <div className="mb-6 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div ref={previewVirtualizer.containerRef} className="max-h-[440px] overflow-auto">
-          <table className="w-full whitespace-nowrap text-left text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50 shadow-sm"><tr>{preview.columns.map((column) => <th key={column} className="max-w-[240px] border-b border-slate-200 p-3 font-semibold text-slate-500">{column}</th>)}</tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {previewVirtualizer.topSpacer > 0 && <tr aria-hidden style={{ height: previewVirtualizer.topSpacer }}><td colSpan={preview.columns.length} /></tr>}
-              {visiblePreviewRows.map((row) => (
-                <tr key={row.rowNumber} className="hover:bg-slate-50">
-                  {preview.columns.map((column) => <PreviewCell key={column} column={column} row={row} />)}
-                </tr>
-              ))}
-              {previewVirtualizer.bottomSpacer > 0 && <tr aria-hidden style={{ height: previewVirtualizer.bottomSpacer }}><td colSpan={preview.columns.length} /></tr>}
-            </tbody>
-          </table>
-          {filteredPreviewRows.length === 0 && <div className="p-8 text-center text-sm font-medium text-slate-500">Tidak ada baris untuk status ini.</div>}
-        </div>
+      <div className="mb-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+        <p><strong className="text-slate-800">Preview sudah dinormalisasi.</strong> Tanggal berada di kolom paling kiri dan hanya kolom baku yang relevan ditampilkan. Kolom asli tetap tersimpan untuk audit.</p>
+      </div>
+      <div className="mb-2 flex items-end justify-between gap-3">
+        <div><h3 className="text-sm font-extrabold text-slate-900">Data Baku</h3><p className="text-xs text-slate-500">Format yang akan digunakan saat validasi dan penyimpanan.</p></div>
+        <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{Math.max(0, preview.columns.length - 2)} kolom data</span>
+      </div>
+      <div className="mb-6">
+        <NormalizedPreviewTable
+          caption={`Preview data baku ${preview.importType === "ads" ? "spending ads" : "pesanan"}`}
+          columns={preview.columns}
+          emptyMessage="Tidak ada baris untuk status ini."
+          rows={currentPreviewRows}
+        />
         {previewTotalPages > 1 && <Pagination page={previewPage} totalPages={previewTotalPages} start={previewStart} pageSize={previewRowsPerPage} totalRows={filteredPreviewRows.length} onChange={setPreviewPage} />}
       </div>
       <div className="flex flex-col-reverse items-stretch justify-end gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center">
@@ -487,8 +482,7 @@ export default function MarketingImportPage() {
       {historyDetail && (
         <HistoryModal
           entry={historyDetail}
-          rows={visibleHistoryRows}
-          virtualizer={historyVirtualizer}
+          rows={currentHistoryRows}
           page={historyPage}
           totalPages={historyTotalPages}
           pageSize={historyRowsPerPage}
@@ -522,22 +516,6 @@ function SummaryBox({ label, value, tone }: { label: string; value: number; tone
   return <div className={`rounded-xl px-3 py-3 ${styles[tone]}`}><div className="text-xs font-bold uppercase tracking-wide opacity-70">{label}</div><div className="mt-1 text-xl font-extrabold">{value.toLocaleString("id-ID")}</div></div>;
 }
 
-function PreviewCell({ column, row }: { column: string; row: ImportPreviewResponse["rows"][number] }) {
-  if (column === "Status Validasi") return <td className="p-3"><ValidationBadge status={row.status} /></td>;
-  const value = column === "Catatan Validasi" ? row.notes.join(" ") || "Data siap disimpan." : row.data[column];
-  const formatted = formatCell(column, value);
-  return <td className={`max-w-[260px] p-3 text-slate-700 ${column === "Catatan Validasi" ? "min-w-[240px] whitespace-normal" : "truncate"}`} title={String(formatted)}>{formatted}</td>;
-}
-
-function formatCell(column: string, value: unknown): string {
-  if (value === null || value === undefined || value === "") return "-";
-  if (typeof value === "number") {
-    if (/spending|harga|total bayar/i.test(column)) return `Rp${Math.round(value).toLocaleString("id-ID")}`;
-    return value.toLocaleString("id-ID");
-  }
-  return String(value);
-}
-
 function Pagination({ page, totalPages, start, pageSize, totalRows, onChange }: { page: number; totalPages: number; start: number; pageSize: number; totalRows: number; onChange: (page: number) => void }) {
   return <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 p-3 px-4"><span className="text-xs font-semibold text-slate-500">{start + 1}–{Math.min(start + pageSize, totalRows)} dari {totalRows}</span><div className="flex items-center gap-1"><button onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 disabled:opacity-50">Sebelumnya</button><span className="px-3 text-xs font-bold text-slate-700">Hal {page} / {totalPages}</span><button onClick={() => onChange(Math.min(totalPages, page + 1))} disabled={page === totalPages} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 disabled:opacity-50">Berikutnya</button></div></div>;
 }
@@ -558,10 +536,60 @@ function HistoryStatus({ status }: { status: ImportHistoryEntry["status"] }) {
   return <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ${config[1]}`}>{status === "completed" ? <CheckCircle2 className="size-3.5" /> : <Clock className="size-3.5" />}{config[0]}</span>;
 }
 
-function HistoryModal({ entry, rows, virtualizer, page, totalPages, pageSize, start, onPageChange, onPageSizeChange, onClose, onDownload }: { entry: ImportHistoryEntry; rows: NonNullable<ImportHistoryEntry["rows"]>; virtualizer: ReturnType<typeof useRowVirtualizer<HTMLDivElement>>; page: number; totalPages: number; pageSize: number; start: number; onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void; onClose: () => void; onDownload: () => void }) {
+function HistoryModal({ entry, rows, page, totalPages, pageSize, start, onPageChange, onPageSizeChange, onClose, onDownload }: { entry: ImportHistoryEntry; rows: NonNullable<ImportHistoryEntry["rows"]>; page: number; totalPages: number; pageSize: number; start: number; onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void; onClose: () => void; onDownload: () => void }) {
   const allRows = entry.rows ?? [];
   const columns = historyColumns(allRows, entry.importType);
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}><div className="flex max-h-[88vh] w-full max-w-6xl flex-col rounded-[24px] bg-white p-6 shadow-xl sm:p-8" onClick={(event) => event.stopPropagation()}><div className="mb-4 flex items-start justify-between border-b border-slate-100 pb-4"><div><h3 className="text-lg font-bold text-slate-900">{shortBatchId(entry.id)} — {sourceLabel(entry)}</h3><p className="text-sm text-slate-500">{formatDateTime(entry.createdAt)} • {entry.fileName} • {entry.totalRows.toLocaleString("id-ID")} baris</p></div><button onClick={onClose} className="flex size-8 items-center justify-center rounded-full bg-slate-100"><X className="size-4" /></button></div><div className="mb-3 flex items-center justify-end gap-2"><span className="text-xs font-semibold text-slate-500">Tampilkan</span><select value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))} className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold">{[10, 20, 50, 100].map((value) => <option key={value} value={value}>{value}</option>)}<option value={allRows.length || 1}>Semua</option></select></div><div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-200"><div ref={virtualizer.containerRef} className="max-h-[54vh] overflow-auto"><table className="w-full whitespace-nowrap text-left text-sm"><thead className="sticky top-0 z-10 bg-slate-50"><tr>{columns.map((column) => <th key={column} className="border-b border-slate-200 p-3 text-slate-500">{column}</th>)}</tr></thead><tbody>{virtualizer.topSpacer > 0 && <tr style={{ height: virtualizer.topSpacer }}><td colSpan={columns.length} /></tr>}{rows.map((row) => <tr key={row.rowId ?? row.rowNumber} className="border-b border-slate-100">{columns.map((column) => <PreviewCell key={column} column={column} row={row} />)}</tr>)}{virtualizer.bottomSpacer > 0 && <tr style={{ height: virtualizer.bottomSpacer }}><td colSpan={columns.length} /></tr>}</tbody></table>{allRows.length === 0 && <div className="p-8 text-center text-sm text-slate-500">Tidak ada baris pada riwayat ini.</div>}</div>{totalPages > 1 && <Pagination page={page} totalPages={totalPages} start={start} pageSize={pageSize} totalRows={allRows.length} onChange={onPageChange} />}</div><div className="mt-4 flex justify-end gap-3 border-t border-slate-100 pt-4"><button onClick={onClose} className="rounded-xl px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100">Tutup</button><button onClick={onDownload} className="inline-flex items-center gap-2 rounded-xl bg-brand-red px-5 py-2.5 text-sm font-bold text-white"><Download className="size-4" /> Download CSV</button></div></div></div>;
+  return (
+    <div
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={onClose}
+      role="dialog"
+    >
+      <div
+        className="flex max-h-[92vh] w-full max-w-[1400px] flex-col rounded-[24px] bg-white p-5 shadow-xl sm:p-7"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="min-w-0">
+            <h3 className="truncate text-lg font-bold text-slate-900">{shortBatchId(entry.id)} — {sourceLabel(entry)}</h3>
+            <p className="mt-1 truncate text-sm text-slate-500">{formatDateTime(entry.createdAt)} • {entry.fileName} • {entry.totalRows.toLocaleString("id-ID")} baris</p>
+          </div>
+          <button aria-label="Tutup riwayat import" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200" onClick={onClose} type="button"><X className="size-4" /></button>
+        </div>
+
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h4 className="text-sm font-extrabold text-slate-900">Data Baku Tersimpan</h4>
+            <p className="mt-1 text-xs text-slate-500">Tanggal berada paling kiri. Kolom asli tetap tersimpan di staging untuk audit, tetapi tidak dicampur ke tabel baku.</p>
+          </div>
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+            Tampilkan
+            <select className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700" onChange={(event) => onPageSizeChange(Number(event.target.value))} value={pageSize}>
+              {[10, 20, 50, 100].map((value) => <option key={value} value={value}>{value}</option>)}
+              <option value={allRows.length || 1}>Semua</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200">
+          <NormalizedPreviewTable
+            caption={`Riwayat data baku ${entry.importType === "ads" ? "spending ads" : "pesanan"}`}
+            columns={columns}
+            emptyMessage="Tidak ada baris pada riwayat ini."
+            maxHeightClassName="max-h-[56vh]"
+            rows={rows}
+          />
+          {totalPages > 1 && <Pagination page={page} totalPages={totalPages} start={start} pageSize={pageSize} totalRows={allRows.length} onChange={onPageChange} />}
+        </div>
+
+        <div className="mt-4 flex justify-end gap-3 border-t border-slate-100 pt-4">
+          <button className="rounded-xl px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100" onClick={onClose} type="button">Tutup</button>
+          <button className="inline-flex items-center gap-2 rounded-xl bg-brand-red px-5 py-2.5 text-sm font-bold text-white" onClick={onDownload} type="button"><Download className="size-4" /> Download CSV Baku</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SuccessModal({ result, onClose }: { result: ImportCommitResponse; onClose: () => void }) {
@@ -594,22 +622,36 @@ function validationLabel(status: ImportValidationStatus): string {
 }
 
 function historyColumns(rows: ImportPreviewRow[], importType: MarketplaceImportType): string[] {
-  const dateColumn = importType === "ads" ? "Tanggal" : "Tanggal Pesanan";
-  const preferred = importType === "ads"
-    ? ["Tanggal", "Tanggal Akhir", "Platform", "ADV", "Campaign", "Adset / Grup Iklan", "Nama Iklan", "ID Campaign", "ID Produk", "Spending", "Nilai Pembelian"]
-    : ["Tanggal Pesanan", "Platform", "Toko", "No Invoice", "No Resi", "Customer", "No HP", "Email", "Produk", "Qty", "Harga Produk", "Total Bayar", "Metode Bayar"];
-  const available = new Set(rows.flatMap((row) => Object.keys(row.data)));
-  const columns = [dateColumn, ...preferred.filter((column) => column !== dateColumn), ...[...available].filter((column) => !preferred.includes(column))];
-  if (!columns.includes("Status Validasi")) columns.push("Status Validasi");
-  if (!columns.includes("Catatan Validasi")) columns.push("Catatan Validasi");
-  return columns;
+  const preferred = NORMALIZED_IMPORT_COLUMNS[importType];
+  const dateColumn = preferred[0]!;
+  const hasValue = (column: string) => rows.some((row) => {
+    const value = row.data[column];
+    return value !== null && value !== undefined && value !== "" && value !== "-";
+  });
+
+  return [
+    dateColumn,
+    ...preferred.slice(1).filter(hasValue),
+    "Status Validasi",
+    "Catatan Validasi",
+  ];
+}
+
+function normalizedExportColumns(importType: MarketplaceImportType): string[] {
+  return [
+    ...NORMALIZED_IMPORT_COLUMNS[importType],
+    "Status Validasi",
+    "Catatan Validasi",
+  ];
 }
 
 function downloadCsv(filename: string, rows: Array<Record<string, string | number | null>>, columns?: string[]) {
   if (rows.length === 0) return;
   const headers = columns ?? Object.keys(rows[0]!);
   const escape = (value: unknown) => {
-    const text = String(value ?? "");
+    const original = String(value ?? "");
+    const isFormula = typeof value === "string" && original !== "-" && /^[\t\r ]*[=+\-@]/.test(original);
+    const text = isFormula ? `'${original}` : original;
     return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
   const csv = `\uFEFF${[headers.map(escape).join(","), ...rows.map((row) => headers.map((header) => escape(row[header])).join(","))].join("\r\n")}`;

@@ -28,7 +28,7 @@ export function MasterDataPage() {
           cohort: data.cohort,
           produk: data.produk,
           channel: data.channel,
-          "cs-tim": data.csTim,
+          karyawan: data.csTim, // Mapping from old API key just in case
           ekspedisi: data.ekspedisi,
         });
       })

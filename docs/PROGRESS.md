@@ -1,6 +1,6 @@
 # PROBETES ERP — Papan Status Pengerjaan
 
-Papan status hidup untuk melacak progres pembangunan sesuai **[PRD.md](PRD.md)** dan roadmap fase.
+Papan status hidup untuk melacak progres pembangunan sesuai **[PRD utama — Blueprint SSOT](PRD_BLUEPRINT_SSOT.md)** dan **[roadmap urutan eksekusi](ROADMAP_PENGERJAAN.md)**.
 Dicentang tiap fitur selesai **dan sudah diverifikasi** (bukan sekadar kodenya ditulis).
 
 **Cara baca status:** ⬜ Belum · 🟡 Proses · ✅ Selesai · ⏸️ Ditunda
@@ -8,7 +8,7 @@ Dicentang tiap fitur selesai **dan sudah diverifikasi** (bukan sekadar kodenya d
 **Aturan centang:** boleh ✅ hanya jika **Syarat Selesai** terpenuhi & sudah dicek jalan.
 **Tanggal:** diambil dari tanggal commit fitur terkait (bukan diketik manual).
 
-_Terakhir diperbarui: 14 Juli 2026 — diverifikasi ulang ke database live + git. Lihat bagian **Kekurangan & Saran** di bawah._
+_Terakhir diperbarui: 16 Juli 2026 — parser file asli TikTok/Shopee/Meta sudah diverifikasi, preview memakai kontrak data baku, dan commit order multi-produk sudah atomik tanpa omzet ganda._
 
 ---
 
@@ -19,8 +19,8 @@ _Terakhir diperbarui: 14 Juli 2026 — diverifikasi ulang ke database live + git
 | 0 | Fondasi UI & struktur | ✅ Selesai | 3/3 |
 | 1 | Database Core (baca) | ✅ Selesai | 8/8 |
 | 2 | API tulis & edit data utama | 🟡 Proses | 1/4 (pilot Pelanggan) |
-| 3 | Staging & import aman | ⬜ Belum | 0/3 |
-| 4 | Marketing import marketplace | 🟡 Proses | 1/4 |
+| 3 | Staging & import aman | ✅ Selesai | 3/3 |
+| 4 | Marketing import marketplace | 🟡 Proses | 3/4 |
 | 5 | Sales & Order + Iklan & ROAS | 🟡 Proses | 0/4 |
 | 6 | CRM + RFM & Cohort | 🟡 Proses | 1/6 |
 | 7 | Data Tracking | ⬜ Belum | 0/4 |
@@ -73,22 +73,22 @@ _Terakhir diperbarui: 14 Juli 2026 — diverifikasi ulang ke database live + git
 | F2-03 | Mapping produk/channel | Ubah mapping alias → produk/channel final tersimpan | M | ⬜ | — | dari status review → valid |
 | F2-04 | Activity log dasar | Setiap edit tercatat (siapa, kapan, before/after) | M | 🟡 | 2026-07-14 | Tabel `audit.change_log` + rekam edit/arsip Pelanggan. `changed_by='app'` (identitas user menunggu IAM/Fase 10) |
 
-## Fase 3 — Staging & Import Aman ⬜
+## Fase 3 — Staging & Import Aman ✅
 
 | ID | Item | Syarat Selesai | Est | Status | Tgl | Catatan |
 |---|---|---|---|---|---|---|
-| F3-01 | Schema staging | `staging.import_rows` ada, menampung baris mentah + parsed | M | ⬜ | — | penampungan sementara |
-| F3-02 | Preview & validasi import | Upload → preview tabel → validasi field wajib/HP/tanggal/duplikat | L | ⬜ | — | sebelum promote |
-| F3-03 | Promote ke data utama | Data valid masuk master/orders; ragu → `review` | L | ⬜ | — | fondasi migrasi 2-bulanan |
+| F3-01 | Schema staging | `staging.import_rows` ada, menampung baris mentah + parsed | M | ✅ | 2026-07-16 | raw tetap tersimpan untuk audit; preview hanya menampilkan data baku |
+| F3-02 | Preview & validasi import | Upload → preview tabel → validasi field wajib/HP/tanggal/duplikat | L | ✅ | 2026-07-16 | kontrak Ads/Order baku + status Valid/Perlu Dicek/Duplikat/Error |
+| F3-03 | Promote ke data utama | Data valid masuk master/orders; ragu → `review` | L | ✅ | 2026-07-16 | promote per invoice atomik; item bermasalah menahan seluruh invoice |
 
 ## Fase 4 — Marketing Import Marketplace 🟡
 
 | ID | Item | Syarat Selesai | Est | Status | Tgl | Catatan |
 |---|---|---|---|---|---|---|
 | F4-01 | Import Spending Ads (Meta) | Schema `marketing.ad_*` + upload + parse; batch tercatat | L | ✅ | 2026-07-09 | schema & API ada (data belum diimport) |
-| F4-02 | Import Data Pesanan (Scalev) | Upload file order → preview → tersimpan | M | 🟡 | 2026-07-09 | import page handle Scalev — WIP |
+| F4-02 | Import Data Pesanan (Scalev) | Upload file order → preview → tersimpan | M | 🟡 | 2026-07-16 | parser dan deteksi Meta/Scalev lulus; 22 nama produk masih perlu alias master |
 | F4-03 | Edit/hapus toko di import | Kelola daftar toko sumber import | S | ✅ | 2026-07-09 | edit/delete store |
-| F4-04 | Import TikTok/Shopee | Upload + mapping kolom kedua platform | M | ⬜ | — | belum |
+| F4-04 | Import TikTok/Shopee | Upload + mapping kolom kedua platform | M | ✅ | 2026-07-16 | file asli Ads/Order kedua platform lulus preview baku |
 
 ## Fase 5 — Sales & Order + Iklan & ROAS 🟡
 
@@ -187,7 +187,6 @@ Bagian ini dicek langsung ke database live + kode, bukan asumsi. Diperbarui tiap
 | K-1 | **Data belum bisa ditulis/diedit dari aplikasi** (semua API master read-only, Edit/Hapus masih mock) | Data kotor tidak bisa dibersihkan dari app; keputusan owner kualitas data tak bisa diterapkan | Fase 2 |
 | K-2 | **Cohort ↔ Order belum tersambung** (`customer_transactions.order_id` = 0%) | Laporan repeat/LTV/retention belum bisa akurat | F1-08, Fase 6/12 |
 | K-3 | **SKU produk masih 0%** | Produk belum tersambung ke stok gudang | F8-02 (Fase 8) |
-| K-4 | **Belum ada penampungan (staging)** — import masih drop+recreate | Migrasi bertahap 2-bulanan & validasi sebelum masuk belum ada mekanismenya | Fase 3 |
 | K-5 | **Belum ada login & hak akses (IAM)** | Aplikasi belum multi-user; data sensitif (nanti HRIS/finance) belum bisa dibatasi | Fase 10 |
 | K-6 | **Belum ada activity log** | Perubahan data tidak terekam siapa/kapan | F2-04, Fase 10 |
 
@@ -214,8 +213,7 @@ Sudah dibersihkan: nama (35→3), kota (310→256). Sisa butuh keputusan → `do
 1. **Selesaikan & commit Marketing** (Fase 4–5) yang sedang jalan — jangan menumpuk WIP.
 2. **Fase 2 (API tulis + merge customer)** — fondasi kebersihan data; semua modul baca master yang sama.
 3. **Sambung cohort↔order (K-2)** — syarat sebelum Reports & CRM retention akurat.
-4. **Fase 3 (staging)** — sebelum import makin banyak sumber.
-5. **Fase 10 (IAM) sebelum Fase 11 (HRIS)** — jangan simpan gaji/NIK tanpa kontrol akses.
+4. **Fase 10 (IAM) sebelum Fase 11 (HRIS)** — jangan simpan gaji/NIK tanpa kontrol akses.
 
 ---
 
@@ -223,6 +221,8 @@ Sudah dibersihkan: nama (35→3), kota (310→256). Sisa butuh keputusan → `do
 
 | Tanggal | Perubahan |
 |---|---|
+| 2026-07-16 | Roadmap Marketing 1.1–1.2 selesai: lima file asli TikTok/Shopee/Meta/Scalev diuji ulang; preview dinormalisasi; ROAS/CTR/CPA diturunkan dari metrik inti; deteksi Scalev diperbaiki; commit order multi-produk diverifikasi atomik tanpa omzet ganda. `pnpm typecheck`, regression self-check, dan production build lulus. |
+| 2026-07-16 | Fase 0 Bebenah selesai: `PRD_BLUEPRINT_SSOT.md` ditetapkan sebagai PRD utama; `PRD.md` lama dipindahkan ke `docs/archive/`; referensi diperbarui; `pnpm typecheck` dan `pnpm build` lulus tanpa warning. |
 | 2026-07-14 | Papan status dibuat. Kondisi awal diisi dari audit DB live + git history: Fase 0–1 selesai, Fase 4–6 sebagian, sisanya belum. |
 | 2026-07-14 | Pembersihan kualitas data batch-1: detektor nama diperbaiki (quality-sql.ts), 54 kota di-backfill (backfill_city.py + pipeline), daftar keputusan owner dibuat. |
 | 2026-07-14 | Verifikasi ulang ke DB live + git; ditambahkan bagian **Kekurangan & Saran** (K-1..K-6, saran cepat & urutan). Status Fase 0–13 dipastikan masih akurat. |

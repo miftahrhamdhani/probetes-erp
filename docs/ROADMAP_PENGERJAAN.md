@@ -15,12 +15,12 @@
 
 | No | Task | Sisi | Prioritas | Status |
 |---|---|---|---|---|
-| 0.1 | Audit folder `docs/` → buat daftar file usang untuk dihapus (tampilkan dulu, hapus setelah ACC) | — | Tinggi | ⬜ |
-| 0.2 | Audit dead code (fungsi/komponen/mock tak terpakai) → buat daftar | — | Tinggi | ⬜ |
-| 0.3 | Hapus file & kode yang sudah di-ACC | Both | Tinggi | ⬜ |
-| 0.4 | Jadikan `PRD_BLUEPRINT_SSOT.md` sebagai PRD utama; arsipkan/hapus `PRD.md` lama | — | Sedang | ⬜ |
-| 0.5 | Update `CLAUDE.md` + `PROGRESS.md` agar menunjuk ke PRD baru | — | Sedang | ⬜ |
-| 0.6 | Pastikan `pnpm typecheck` & `pnpm build` bersih setelah bebenah | Both | Tinggi | ⬜ |
+| 0.1 | Audit folder `docs/` → buat daftar file usang untuk dihapus (tampilkan dulu, hapus setelah ACC) | — | Tinggi | ✅ |
+| 0.2 | Audit dead code (fungsi/komponen/mock tak terpakai) → buat daftar | — | Tinggi | ✅ |
+| 0.3 | Hapus file & kode yang sudah di-ACC | Both | Tinggi | ✅ |
+| 0.4 | Jadikan `PRD_BLUEPRINT_SSOT.md` sebagai PRD utama; arsipkan/hapus `PRD.md` lama | — | Sedang | ✅ |
+| 0.5 | Update `CLAUDE.md` + `PROGRESS.md` agar menunjuk ke PRD baru | — | Sedang | ✅ |
+| 0.6 | Pastikan `pnpm typecheck` & `pnpm build` bersih setelah bebenah | Both | Tinggi | ✅ |
 
 **Output Fase 0:** repo bersih, satu PRD acuan, tidak ada dead code, build lulus.
 
@@ -32,8 +32,8 @@
 
 | No | Sub-menu | Task | Sisi | Status |
 |---|---|---|---|---|
-| 1.1 | Import Data Channel | Uji ulang parser TikTok/Shopee/Meta (file asli) + perbaiki alias yang masih meleset | BE | ⬜ |
-| 1.2 | Import Data Channel | Commit multi-produk atomik (1 order, banyak item) — pastikan omzet tidak ganda | BE | ⬜ |
+| 1.1 | Import Data Channel | Uji ulang parser TikTok/Shopee/Meta (file asli) + perbaiki alias yang masih meleset | BE | ✅ |
+| 1.2 | Import Data Channel | Commit multi-produk atomik (1 order, banyak item) — pastikan omzet tidak ganda | BE | ✅ |
 | 1.3 | Admin Inputer | Uji end-to-end cari order → edit identitas → simpan + audit | Both | ⬜ |
 | 1.4 | Sales & Order Center | Detail order (items, customer, shipment, finance) read | Both | ⬜ |
 | 1.5 | CRM | Job re-compute cohort/RFM dari `orders` (bukan hardcode) | BE | ⬜ |

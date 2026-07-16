@@ -1,10 +1,12 @@
 # PROBETES ERP — PRD & Blueprint Arsitektur SSOT
 
-**Software Architecture + Product Requirements Document**
-Stack: Next.js (App Router) · TypeScript · React · Tailwind CSS · Prisma ORM · PostgreSQL
+**Software Architecture + Product Requirements Document — acuan utama project**
+Stack: Next.js (App Router) · TypeScript · React · Tailwind CSS · PostgreSQL via `pg` (node-postgres), tanpa ORM
 Prinsip inti: **Single Source of Truth (SSOT)** — meniru logika Odoo & ERPNext, disederhanakan.
 
 > Dokumen ini adalah acuan arsitektur. Sudah diselaraskan dengan skema PostgreSQL yang **sudah ada** di `data_migrasi/db/*.sql` (schema `master`, `orders`, `tracking`, `finance`, `marketing`, `staging`, `audit`). Yang belum ada (Warehouse ledger, Finance GL, HRIS, IAM) ditandai sebagai **BARU**.
+>
+> **Aturan implementasi:** seluruh akses database memakai SQL terparameterisasi melalui `pg` mentah. Contoh model di dokumen ini hanyalah notasi konseptual untuk menjelaskan tabel dan relasi; contoh tersebut bukan instruksi memasang atau menggunakan Prisma.
 
 ---
 
@@ -123,7 +125,7 @@ Ini contoh nyata yang menyentuh 6 modul TANPA input ulang:
 
 ### 2.3 Aturan Teknis SSOT (wajib dipatuhi tiap fitur)
 
-1. **Derived field = computed, bukan stored.** Contoh: `on_hand`, `transaction_count`, `total_spent`, `ROAS`, `laba` dihitung via query/Prisma aggregate. Kalau di-*cache* (untuk performa), harus ada job re-compute + tandai `computed_at`.
+1. **Derived field = computed, bukan stored.** Contoh: `on_hand`, `transaction_count`, `total_spent`, `ROAS`, `laba` dihitung via query/agregasi SQL. Kalau di-*cache* (untuk performa), harus ada job re-compute + tandai `computed_at`.
 2. **Foreign key, bukan copy string.** Order menyimpan `customer_id`, bukan menyalin nama+alamat (kecuali snapshot alamat kirim yang memang berbeda per order).
 3. **Import = staging → validate → promote.** Tidak ada tulis langsung ke tabel utama dari file.
 4. **Uang hanya lewat Ledger.** Modul lain tidak menulis saldo; mereka memicu pembuatan Ledger Entry.
@@ -133,7 +135,7 @@ Ini contoh nyata yang menyentuh 6 modul TANPA input ulang:
 
 ## Bagian 3 — Detail Per Menu & Sub-Menu
 
-Konvensi Prisma di bawah: `@@schema("...")` (Prisma multi-schema), uang = `BigInt` (rupiah bulat), ID = `String`.
+Notasi model konseptual di bawah memakai bentuk mirip Prisma agar relasi ringkas dan mudah dibaca. Implementasi fisiknya tetap berupa migration SQL per schema dan query `pg`; uang memakai `BIGINT` (rupiah bulat), sedangkan ID memakai tipe PostgreSQL yang sesuai dengan schema aktual.
 
 ---
 
@@ -246,9 +248,84 @@ model BackupHistory {
 
 **Fungsi:** pintu masuk utama data penjualan & iklan (SSOT untuk Order & Ad Spend). Ini modul paling matang.
 
-### 2a. Import Data Channel
+**Keputusan struktur produk:** TikTok, Shopee, Meta/Akuisisi, CRM, dan Konsulen adalah **submenu sekaligus workspace kerja yang terpisah secara tampilan, navigasi, hak akses, dan scope data**. Pemisahan ini bukan pemisahan parser, business logic, database, atau sumber kebenaran. Khusus TikTok, Shopee, dan Meta/Akuisisi, seluruh file tetap mengerucut ke **satu Marketing Import Engine**, satu staging pipeline, satu kontrak normalisasi, dan tabel final yang sama.
+
+> **Invariant SSOT:** banyak pintu masuk, satu corong data. Dilarang membuat salinan importer, parser orchestration, validator, commit service, repository, rumus KPI, riwayat, atau tabel final khusus platform seperti `tiktok_orders`, `shopee_orders`, dan `meta_ads_metrics`. Perbedaan format file ditangani oleh shared parser entrypoint serta adapter/alias sumber yang sudah ada.
+
+### 2a. Struktur Menu & Workspace Marketing
+
+**Tujuan UX:** karyawan langsung masuk ke area kerja sesuai tanggung jawabnya sehingga tidak perlu memilih platform secara manual dan tidak dapat salah mengunggah file ke platform lain.
+
+**Navigasi utama:** submenu berikut tampil langsung di bawah menu Marketing, mengikuti permission pengguna.
+
+```text
+Marketing
+├── TikTok
+├── Shopee
+├── Meta / Akuisisi
+├── CRM
+└── Konsulen
+```
+
+Klik salah satu submenu membuka **workspace khusus** dengan sidebar internal. Saat berada di workspace TikTok, sidebar internal hanya menampilkan fitur TikTok; nama dan fitur Shopee, Meta, CRM, atau Konsulen tidak ikut tampil. Perpindahan domain dilakukan melalui aksi **Kembali ke Marketing**, bukan accordion platform di dalam satu dashboard generik.
+
+| Workspace | Submenu internal | Sumber baca / target tulis SSOT | Scope wajib |
+|---|---|---|---|
+| **TikTok** | Dashboard; Import Data → Spending Ads, Data Pesanan; Laporan Iklan; Pesanan & Penjualan; Toko & Stok; Data Review; Riwayat Import | `marketing.ad_campaign_metrics`, `orders.orders`, `orders.order_items`, master customer/produk, pipeline import bersama | source platform TikTok + toko/ADV yang ditugaskan |
+| **Shopee** | Dashboard; Import Data → Spending Ads, Data Pesanan; Laporan Iklan; Pesanan & Penjualan; Toko & Stok; Data Review; Riwayat Import | tabel dan pipeline canonical yang sama dengan TikTok | source platform Shopee + toko/ADV yang ditugaskan |
+| **Meta / Akuisisi** | Dashboard; Import Data → Spending Ads Meta, Data Pesanan Scalev; Laporan Iklan; Pesanan & Penjualan; Data Review; Riwayat Import | `marketing.ad_campaign_metrics`, order hasil Scalev di `orders.*`, master customer/produk, pipeline import bersama | source platform Meta/Scalev + ad account/ADV yang ditugaskan |
+| **CRM** | Dashboard; Import Data → Spending Ads, Data Pesanan; Laporan Iklan; Pelanggan & Pesanan; RFM & Cohort; Follow-up; Data Review; Riwayat Import | pintu import CRM tetap memakai engine yang sama; fakta ads/order tetap masuk ke tabel canonical, sedangkan aktivitas CRM masuk ke domain CRM | source platform + `business_scope = crm` + customer/tim yang ditugaskan |
+| **Konsulen** | Dashboard; Customer Remisi; Konsultasi Harian; Follow-up Harian | membaca `master.customers` dan `orders.*`; menulis aktivitas konsultasi/follow-up dengan FK ke customer dan karyawan | scope customer/tim konsulen |
+
+**Batas domain:**
+
+1. Dashboard TikTok/Shopee/Meta adalah query bersama yang diberi filter platform permanen di server, bukan dashboard dan rumus baru per platform.
+2. Kebutuhan **Import Data → Spending Ads dan Data Pesanan** di CRM tetap dipertahankan. Secara arsitektur, CRM adalah workspace/business scope, bukan `platform_code` baru. Default sumbernya adalah campaign Meta untuk tim/tujuan CRM dan order Scalev yang ditangani CRM; keduanya melewati engine Meta/Scalev yang sama, memakai file hash/dedup key yang sama, dan tidak boleh menghasilkan fakta kedua jika file sudah pernah masuk dari workspace Meta/Akuisisi.
+3. Sebelum Import CRM diaktifkan, owner bisnis wajib menyetujui classifier canonical seperti `business_scope`, `team_id`, campaign ownership/objective, serta assignment order. Jika classifier belum tersedia, menu tetap boleh terlihat sebagai **Belum Tersedia**; sistem dilarang menebak dari nama campaign atau mengaktifkan commit. Bila kelak ada file native CRM, file itu hanya boleh memuat lead, assignment, follow-up, outcome, dan aktivitas lain—bukan menyalin order/spending marketplace.
+4. Konsulen tidak membuat master customer atau order kedua. Konsultasi dan follow-up selalu mereferensikan `customer_id`, `order_id` bila relevan, dan `employee/account_id` pelaksana.
+5. Istilah dan aturan **Customer Remisi** wajib dipastikan bersama owner bisnis sebelum schema atau automasi dibuat.
+6. Toko & Stok marketplace tidak menjadi SSOT stok fisik. Stok fisik tetap berasal dari Warehouse Stock Move; stok listing marketplace, bila diambil, disimpan sebagai snapshot berwaktu dan diberi label waktu sinkronisasi.
+7. Perbandingan lintas platform untuk Owner/Admin ditempatkan sebagai laporan agregat read-only di **MENU 8 — REPORTS**, bukan mencampur jalur kerja harian semua platform dalam satu sidebar Marketing.
+
+**Shell UI yang dipakai bersama:**
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│ ← Kembali ke Marketing   [Identitas Workspace + Role]    │
+├────────────────┬─────────────────────────────────────────┤
+│ Dashboard      │ Judul workspace + periode + data segar  │
+│ Import Data *  │ KPI / chart / tabel sesuai halaman      │
+│ Laporan ...    │                                         │
+│ Data Review    │ Empty / Loading / Error / Success       │
+│ Riwayat Import │                                         │
+└────────────────┴─────────────────────────────────────────┘
+```
+
+`*` Item sidebar bersifat conditional berdasarkan konfigurasi dan permission workspace; Konsulen tidak menampilkan Import Data marketplace. Desktop memakai sidebar internal persisten. Mobile memakai drawer dengan identitas workspace tetap terlihat di header. Halaman yang bersumber dari import/sinkronisasi wajib menampilkan periode data, waktu import/sinkronisasi terakhir, serta jumlah baris perlu review. Halaman aktivitas menampilkan freshness/status aktivitasnya sendiri. Semua halaman wajib mempunyai state default, loading, empty, error, success, dan forbidden.
+
+**Akses:** role menjelaskan kemampuan, sedangkan assignment menjelaskan platform, toko, ADV/ad account, dan tim yang boleh diakses. Navigasi yang disembunyikan hanya untuk UX; preview, commit, cancel, history, export, dan API laporan tetap memeriksa session, permission, serta scope di server. Nilai `imported_by`/aktor audit berasal dari session, bukan input browser atau teks role bebas pada data karyawan.
+
+**Prasyarat production:** IAM minimal (account, login/session, role-permission, aktor audit nyata) dan assignment scope harus tersedia sebelum workspace ini boleh diklaim aman berdasarkan role. Kontrak assignment minimum berbentuk `account_id + domain + platform_code/source_platform + store_id/ad_account_id/team_id` sesuai kebutuhan. Selama IAM minimal belum tersedia, pemisahan halaman hanya peningkatan UX dan **bukan** kontrol keamanan; commit production berbasis role belum boleh dirilis.
+
+**Route UI target:**
+
+```text
+/marketing/tiktok/*
+/marketing/shopee/*
+/marketing/meta/*
+/marketing/crm/*
+/marketing/konsulen/*
+```
+
+Route berbeda hanya menjadi **presentation/access boundary**. Implementasi frontend menggunakan satu `MarketingWorkspaceShell`, satu feature import reusable, dan konfigurasi workspace (`lockedPlatform`, `allowedImportTypes`, `navigation`, `permissionScope`). Service, repository, shared parser entrypoint/adapters, staging, commit transaction, dan query KPI tidak disalin.
+
+### 2b. Shared Marketing Import Engine (Import Data Channel)
 
 **Deskripsi:** upload CSV/XLSX TikTok/Shopee/Meta → normalisasi → preview → commit. Ada tab **Admin Inputer** (lengkapi identitas pelanggan tersensor via ID Pesanan/resi). Sudah terimplementasi.
+
+Bagian ini adalah **kontrak canonical satu-satunya** untuk seluruh halaman import TikTok, Shopee, Meta/Akuisisi, dan pintu import CRM yang bersumber dari Meta/Scalev. Pemisahan workspace hanya mengubah shell, label, route, platform lock/source scope, pilihan sumber yang diizinkan, dan riwayat yang ditampilkan. Algoritma parsing, alias, normalisasi, deduplikasi, validasi, preview, commit atomik, audit, serta target database tidak berubah dan tidak boleh di-fork.
+
+Jalur direct-write iklan legacy seperti `/api/marketing/ads/import` bukan write path resmi dan wajib dipensiunkan sebelum workspace baru dinyatakan selesai. Jika `marketing.ad_import_batches` masih dibutuhkan selama migrasi, fungsinya hanya compatibility/lineage; target akhirnya seluruh fakta iklan menunjuk ke `marketing.import_batches` canonical dan melewati staging yang sama.
 
 **Struktur DB (sudah ada `marketing` + `staging`):**
 ```prisma
@@ -278,24 +355,32 @@ model ImportRow {
   @@map("import_rows")
 }
 ```
-Relasi promote: `ImportRow.promotedId → orders.orders.order_id` (untuk order) atau `marketing.ad_campaign_metrics` (untuk iklan).
+Referensi promote: `ImportRow.promotedId` saat ini berfungsi sebagai logical audit pointer ke order atau metrik iklan, bukan satu foreign key fisik ke dua tabel. Target kontrak audit menyimpan pasangan `target_entity + target_id` agar tipe tujuan eksplisit.
 
 **Workflow (state machine):**
 ```
-Pilih Platform → Jenis (Ads/Order) → Pilih ADV/Toko + Periode → Upload
-→ Parser normalisasi (alias kolom, tanggal, dedup multi-produk)
+Masuk Workspace → Server mengunci Platform + memeriksa Permission/Assignment
+→ Platform (terisi dan read-only) → Jenis (Ads/Order) → Pilih ADV/Toko + Periode → Upload
+→ Shared Parser Entrypoint + adapter/alias sumber yang sesuai
+→ normalisasi (alias kolom, tanggal, dedup multi-produk)
 → PREVIEW (tabel baku, badge: Valid/Perlu Dicek/Duplikat/Error)
 → [Cancel]  atau  [Simpan ke Database] (hanya baris valid di-promote)
-→ Riwayat (hanya yang berhasil commit)
+→ Riwayat workspace (default Completed; status Preview/Failed/Cancelled tersedia lewat filter sesuai izin)
 ```
 
-**Admin Inputer:** cari `platform + toko + ID Pesanan` (resi = alternatif) → tampil order read-only → hanya edit nama/HP/alamat → cek kandidat HP kembar (tidak auto-merge) → simpan (optimistic lock `xmin`, audit).
+Halaman Import Center generik yang sudah ada dipertahankan hanya sebagai compatibility route selama migrasi dan diarahkan ke workspace yang sesuai; ia bukan jalur kerja utama dan tidak menambah pipeline kedua. Bahkan untuk Owner/Admin, server tetap mencocokkan fingerprint header file, platform batch, dan scope akun. Platform dari payload browser tidak pernah dipercaya tanpa verifikasi ulang saat preview dan commit.
 
-**UI:** wizard 4 langkah dengan step indicator merah. Preview = tabel virtualized, kolom **Tanggal paling kiri**, filter status, pagination. Tombol aksi kanan-bawah (Cancel / Upload Ulang / Simpan).
+**Admin Inputer:** saat ini berlaku untuk order TikTok/Shopee: cari `platform + toko + ID Pesanan` (resi = alternatif) → tampil order read-only → hanya edit nama/HP/alamat → cek kandidat HP kembar (tidak auto-merge) → simpan (optimistic lock `xmin`, audit). Dukungan order Scalev/Meta baru boleh diaktifkan setelah lookup key dan masking contract-nya tervalidasi.
 
-### 2b. Sales & Order Center
+**UI:** konsep wizard tetap sama: **Platform → Jenis Import → Detail & Upload → Preview** dengan step indicator merah. Di workspace platform, langkah Platform otomatis selesai dan terkunci; pengguna tidak memilih ulang. Preview tetap berupa tabel virtualized dengan kolom **Tanggal paling kiri**, filter status, pagination, ringkasan validasi, dan tombol aksi kanan-bawah (Cancel / Upload Ulang / Simpan). Halaman bukan membuat importer baru, melainkan merender feature import yang sama menggunakan konfigurasi workspace.
+
+**Kontrak normalisasi preview/CSV:** Ads hanya menampilkan tanggal, platform, ADV, campaign, spending, tayangan, klik, CTR, pesanan, nilai konversi, CPA, dan ROAS Platform. Order menampilkan header order satu kali serta item produk per baris (subtotal item terpisah dari total order). `CTR`, `CPA`, dan `ROAS Platform` adalah nilai turunan dari metrik dasar, bukan disimpan ulang sebagai sumber kebenaran.
+
+### 2c. Sales & Order Center
 
 **Deskripsi:** pusat baca pesanan hasil import (overview, produk, channel, CS/CRM, status/COD, retur). Read + koreksi ringan.
+
+Di dalam workspace platform, halaman ini selalu memakai filter platform/toko di server. TikTok, Shopee, dan Meta/Akuisisi tetap membaca `orders.orders` dan `orders.order_items` yang sama; tidak ada tabel order atau perhitungan omzet per workspace. Satu order multi-produk memiliki satu header dan banyak item, sedangkan omzet order dihitung satu kali dari header canonical.
 
 **DB (sudah ada `orders`):**
 ```prisma
@@ -307,6 +392,7 @@ model Order {
   csId         String?  @map("cs_id")
   courierId    String?  @map("courier_id")
   paymentMethod String? @map("payment_method")
+  paymentStatus String? @map("payment_status")
   totalAmount  BigInt?  @map("total_amount")
   orderStatus  String?  @map("order_status")
   flag         String?  // valid | review
@@ -331,13 +417,30 @@ model OrderItem {
 }
 ```
 
+**Gap schema saat ini:** `orders.orders` baru memiliki `channel_id`; identitas source platform, toko, external order ID, dan batch lineage belum cukup eksplisit untuk menjamin filter workspace/toko serta mencegah bentrok nomor order lintas platform. Sebelum laporan per toko atau authorization scope dinyatakan production-ready, tambahkan migration additive **BARU** untuk source identity canonical, misalnya:
+
+```text
+orders.order_sources
+├── order_id             → orders.orders.order_id
+├── platform_code        // tiktok | shopee | meta
+├── source_key           // store/ad account/source yang sudah dinormalisasi
+├── external_order_id
+└── import_batch_id      → marketing.import_batches.batch_id
+
+UNIQUE (platform_code, source_key, external_order_id)
+```
+
+Selama migration tersebut belum tersedia, filter platform hanya boleh memakai mapping `channel_id` dan lineage batch yang tervalidasi; filter toko harus diberi status **Belum Tersedia**, bukan diasumsikan aman. External ID tetap dipreservasi sebagai identitas sumber, sedangkan strategi migrasi primary key order harus backward-compatible dan tidak boleh mereset data.
+
 **Workflow:** filter periode → daftar order → klik = detail (items, customer, shipment, finance) → koreksi non-uang langsung; koreksi uang → butuh approval (lihat Finance).
 
 **UI:** header filter periode + KPI baris (order valid, omzet, produk teratas) → tabel order → drawer/detail. **Reports = read-only turunannya.**
 
-### 2c. CRM
+### 2d. CRM & Retention
 
-**Deskripsi:** analitik pelanggan berbasis cohort + RFM: baru/repeat/high-value/perlu follow-up/konsultasi WA. Bukan input; ini strategi retensi.
+**Deskripsi:** workspace customer berbasis cohort + RFM: baru/repeat/high-value/perlu follow-up/konsultasi WA. Customer, order, spending, dan omzet tidak diinput ulang. Input native CRM hanya aktivitas seperti lead, assignment, follow-up, outcome, dan catatan yang mereferensikan data canonical.
+
+**Import CRM:** UI menggunakan wizard import yang sama. `Spending Ads` diarahkan ke adapter Meta dan `Data Pesanan` diarahkan ke adapter Scalev, lalu diberi business scope/assignment CRM; platform canonical tetap Meta/Scalev. Jika batch/file yang sama sudah pernah masuk melalui Meta/Akuisisi, CRM hanya membaca hasil yang sama dan commit ulang ditolak sebagai duplikat. Sampai classifier `business_scope/team/campaign ownership` disetujui dan tersedia, kedua submenu import CRM tampil disabled dengan penjelasan—bukan memakai data mock atau menebak berdasarkan nama file.
 
 **DB (sudah ada `customer_cohorts`):**
 ```prisma
@@ -358,23 +461,54 @@ model CustomerCohort {
   @@map("customer_cohorts")
 }
 ```
-`cohort` dihitung ulang (job) dari `orders`, bukan diketik → SSOT.
+`cohort` dan `total_spent` dihitung ulang (job/materialized projection) dari `orders`, bukan diketik → SSOT. Projection wajib memiliki `computed_at`/freshness dan dapat dibangun ulang; ia bukan sumber transaksi kedua.
 
 **Workflow:** pilih segmen (mis. "Lama Tidak Beli") → daftar customer + kontak → export daftar broadcast WA → tandai follow-up.
 
 **UI:** panel segmen (chip) di kiri + tabel customer di kanan + donut distribusi RFM. Aksi: "Export Daftar WA", "Tandai Follow-up".
 
-### 2d. Iklan & ROAS
+### 2e. Iklan & ROAS
 
 **Deskripsi:** performa iklan per platform/ADV/campaign + ROAS platform. Data dari `ad_campaign_metrics`.
 
 **DB (sudah ada):** `marketing.ad_campaign_metrics` (spend, purchases, purchase_value, impressions, clicks, dst). Simpan **metrik dasar**; ROAS/CTR/CPA **dihitung**.
 
-**Workflow:** filter periode/platform/ADV/campaign → KPI (spend, sales platform, ROAS) → tabel per campaign → drill ADV/toko. TikTok bulanan: tanggal dari periode input (bukan waktu posting).
+**Workflow:** platform dikunci oleh workspace → filter periode/ADV/campaign → KPI (spend, sales platform, ROAS) → tabel per campaign → drill ADV/toko. TikTok bulanan: tanggal dari periode input (bukan waktu posting).
 
-**UI:** filter bar + KPI + chart tren spend-vs-sales + tabel campaign. Tab: Overview/TikTok/Shopee/Meta/ADV/Campaign/Toko/Review.
+**UI:** filter bar + KPI + chart tren spend-vs-sales + tabel campaign. Workspace TikTok/Shopee/Meta tidak memakai tab untuk berpindah platform. Tab lintas platform hanya boleh ada pada laporan agregat Owner/Admin di MENU 8; rumus dan sumber datanya tetap sama.
 
 > **Catatan SSOT ROAS:** ROAS Platform = `purchase_value / spend` (dari file iklan). ROAS ERP (attributed) BELUM tersedia sampai ada kunci hubung campaign→order. Beri label eksplisit "ROAS Platform".
+
+### 2f. Toko & Stok Marketplace
+
+**Deskripsi:** ringkasan performa toko, produk terjual, dan—jika integrasi tersedia—snapshot stok listing TikTok/Shopee. Halaman ini tidak menulis stok fisik dan tidak menggantikan Warehouse.
+
+**Workflow:** platform/toko terkunci sesuai assignment → pilih periode → lihat omzet/pesanan/top product → bandingkan snapshot listing terakhir dengan stok gudang → tandai selisih untuk ditinjau.
+
+**UI:** identitas toko + data freshness → KPI toko → tabel produk → label jelas **Stok Listing Marketplace** dan **Stok Fisik Gudang**. Jika ledger/snapshot belum tersedia, tampilkan state unavailable yang jujur, bukan angka mock tanpa label.
+
+### 2g. Konsulen
+
+**Deskripsi:** workspace operasional untuk customer remisi, konsultasi harian, dan follow-up harian. Workspace membaca customer/order canonical dan hanya menulis aktivitas konsultasi; tidak membuat customer, order, atau omzet kedua.
+
+**Kontrak minimum data baru (BARU, setelah definisi bisnis disetujui):** activity/consultation memiliki `customer_id`, `employee/account_id`, waktu aktivitas, jenis, outcome/status, `order_id` opsional, catatan, dan audit fields. Detail schema ditetapkan melalui migration additive setelah aturan Customer Remisi, ownership customer, dan workflow follow-up disetujui owner bisnis.
+
+**UI:** daftar kerja harian → filter customer/status/konsulen → detail riwayat customer → catat konsultasi/follow-up → status sukses/gagal/jadwal ulang. Wajib memiliki loading, empty, error, success, forbidden, dan conflict state.
+
+### 2h. Acceptance Criteria Workspace Marketing
+
+1. Menu Marketing menampilkan TikTok, Shopee, Meta/Akuisisi, CRM, dan Konsulen sebagai submenu langsung sesuai permission.
+2. Setelah masuk suatu workspace, sidebar internal hanya memuat fitur workspace tersebut; tersedia aksi **Kembali ke Marketing**.
+3. TikTok, Shopee, dan Meta memakai satu komponen import, satu orchestration flow `parse → map → validate → stage → commit`, satu commit transaction, serta tabel staging/final yang sama.
+4. Platform dikunci oleh route + session scope. File Shopee di workspace TikTok atau file TikTok di workspace Meta ditolak sebelum promote dengan pesan mismatch yang jelas.
+5. Setelah prasyarat IAM minimal terpenuhi, akses di luar permission/scope menghasilkan `403`; payload client tidak dapat mengubah platform, toko, ADV, atau batch menjadi milik scope lain. Sebelum itu, UI split tidak boleh dianggap sebagai security control.
+6. Preview tetap memakai kontrak normalisasi baku, kolom tanggal paling kiri, ringkasan valid/review/duplicate/error, raw data untuk audit, dan CTA simpan hanya untuk data yang lolos aturan.
+7. Upload ulang, retry, atau dua commit paralel tidak menggandakan spending, order, maupun item. Satu order multi-produk tetap satu order, banyak item, dan omzet dihitung satu kali.
+8. Dashboard platform tidak membocorkan data workspace lain. Angka laporan lintas platform harus dapat direkonsiliasi dengan agregasi dashboard platform pada periode/filter yang sama.
+9. `CTR`, `CPA`, `ROAS Platform`, omzet, dan KPI turunan memakai satu implementasi/query canonical; tidak dihitung dengan rumus berbeda di setiap page.
+10. Riwayat, preview detail, cancel, commit, export, dan Data Review difilter serta diotorisasi server-side.
+11. Menu Import CRM tetap tersedia sesuai requirement, tetapi menggunakan adapter Meta/Scalev dan dedup key canonical; file/batch yang sama tidak menghasilkan order atau spending kedua. Konsulen tidak membuat customer/order kedua.
+12. Implementasi dianggap selesai setelah fixture file asli tiap sumber, mismatch platform, authorization, atomic multi-produk, idempotency/concurrency, responsive UI, `pnpm typecheck`, dan `pnpm build` lulus.
 
 ---
 
@@ -840,16 +974,99 @@ Batas: tidak akses NIK/gaji tanpa izin; tidak menulis data bisnis.
 
 ---
 
-## Bagian 5 — Aturan Implementasi Teknis (Prisma/Next.js)
+## Bagian 5 — Aturan Implementasi Teknis (`pg`/Next.js)
 
-1. **Prisma multi-schema:** aktifkan `previewFeatures = ["multiSchema"]`, `schemas = ["master","orders","tracking","finance","warehouse","hris","iam","marketing","staging","audit","ai","system"]`.
-2. **Uang = `BigInt`** (rupiah bulat) di seluruh model — konsisten dengan `schema.sql`.
-3. **Transaksi = `prisma.$transaction`** untuk operasi lintas tabel (commit import, promote order+items+shipment, payroll→ledger, retur→stock+ledger).
+1. **PostgreSQL multi-schema:** kelola schema `master`, `orders`, `tracking`, `finance`, `warehouse`, `hris`, `iam`, `marketing`, `staging`, `audit`, `ai`, dan `system` melalui migration SQL yang versioned.
+2. **Uang = `BIGINT`** (rupiah bulat) di seluruh tabel — konsisten dengan `schema.sql`.
+3. **Transaksi database:** gunakan satu koneksi `pg` dengan `BEGIN`/`COMMIT`/`ROLLBACK` untuk operasi lintas tabel (commit import, promote order+items+shipment, payroll→ledger, retur→stock+ledger).
 4. **Server-only writes:** semua mutasi lewat Route Handler `app/api/.../route.ts` dengan `requirePermission`. Tidak ada tulis dari client.
-5. **Derived fields computed** via Prisma `aggregate`/raw SQL view; jika di-cache, sertakan job re-compute.
+5. **Derived fields computed** melalui agregasi SQL/view; jika di-cache, sertakan job re-compute.
 6. **Audit wajib** di setiap write penting → `audit.change_log` (helper `logChange` sudah ada).
 7. **Import selalu staging→validate→promote**, idempotent, dedup key stabil.
 8. **State machine** eksplisit untuk dokumen berstatus; transisi ilegal ditolak server.
+
+### 5.1 Standar Clean Code & Modular Architecture (wajib)
+
+Semua fitur baru dan refactor harus mengikuti arsitektur modular yang sudah dipakai project. Tujuannya agar logic bisnis dapat diuji, SQL tetap terkontrol, UI tidak menjadi *God Component*, dan perubahan pada satu modul tidak merusak modul lain.
+
+**Alur dependency backend:**
+
+```text
+Route Handler / Controller
+        ↓
+Service / Use Case
+        ↓
+Repository / Query Layer
+        ↓
+PostgreSQL melalui pg
+
+Parser → Mapper → Validator → Service
+```
+
+**Tanggung jawab tiap layer:**
+
+1. **Route Handler / Controller harus tipis.** Hanya menangani autentikasi/otorisasi, membaca input, memanggil service, dan membentuk response HTTP. Route tidak boleh berisi SQL atau business rule panjang.
+2. **Service menyimpan business logic.** Orkestrasi workflow, transaksi lintas tabel, aturan status, idempotency, dan keputusan bisnis berada di service/use case.
+3. **Repository khusus akses data.** Seluruh SQL berada di repository/query layer, selalu terparameterisasi, tidak membangun query dari input mentah, dan tidak membawa detail HTTP/UI.
+4. **Parser, mapper, dan validator dipisahkan.** Parser membaca bentuk file/sumber; mapper menerjemahkan ke bentuk baku; validator menentukan valid/review/error/duplicate. Kamus alias dan aturan normalisasi tidak boleh tersebar di route atau komponen UI.
+5. **Type dan kontrak eksplisit.** Gunakan TypeScript type/interface untuk input, output, entity, dan response. Hindari `any`; jika tidak dapat dihindari pada boundary library, isolasi dan validasi sebelum masuk domain.
+6. **Satu file, satu tanggung jawab utama.** Pecah file ketika menangani lebih dari satu domain, UI dan data access bercampur, atau sudah sulit dibaca/diuji. Dilarang membuat God Component, God Service, God Controller, atau helper serba guna tanpa batas domain.
+7. **Tidak ada duplicate business logic.** Rumus omzet, ROAS, normalisasi nomor HP, status order, dedup key, dan aturan validasi harus mempunyai satu sumber implementasi. UI hanya menampilkan hasil, bukan menghitung ulang aturan backend secara berbeda.
+8. **Error handling konsisten.** Error domain memiliki kode/pesan yang jelas; detail internal dan SQL tidak dikirim ke client. Semua kegagalan transaksi melakukan rollback dan aktivitas penting dicatat untuk audit.
+9. **Konfigurasi dan secret terpisah.** Gunakan environment variable/config module. Tidak ada credential, URL sensitif, nama akun, atau nilai bisnis yang di-hardcode di source code.
+10. **Migration additive dan backward-compatible.** Jangan reset database atau menghapus kolom/data tanpa persetujuan dan rencana migrasi. Constraint, index, serta unique key harus mengikuti aturan domain dan pertumbuhan data.
+
+**Struktur backend yang menjadi acuan:**
+
+```text
+apps/web/src/server/modules/<domain>/<feature>/
+├── <feature>.types.ts
+├── <feature>.service.ts
+├── <feature>.repository.ts
+├── parsers/
+├── mappers/
+├── validators/
+└── self-check.ts atau tests/
+```
+
+Tidak semua folder wajib dibuat jika fiturnya kecil. Buat hanya layer yang memiliki tanggung jawab nyata; jangan menambah abstraksi kosong.
+
+### 5.2 Standar Clean Frontend
+
+1. **Page sebagai composition layer.** Page menyusun feature dan layout; fetching kompleks, transformasi data, serta business rule tidak ditumpuk di `page.tsx`.
+2. **Pisahkan UI dan logic.** Gunakan `components/`, `hooks/`, `services` atau API client, `types/`, `utils/`, dan `constants/` sesuai kebutuhan feature.
+3. **Komponen kecil dan reusable secara wajar.** Reuse hanya untuk pola yang benar-benar sama; hindari komponen generik besar dengan terlalu banyak props dan kondisi.
+4. **State wajib lengkap:** default, loading, empty, error, success, disabled, dan partial/review jika relevan.
+5. **Server sebagai sumber kebenaran.** Validasi frontend membantu UX, tetapi validasi final, otorisasi, transaksi, dan perhitungan bisnis tetap dilakukan backend.
+6. **Accessibility dan responsive wajib.** Elemen interaktif memakai semantic HTML, label, keyboard/focus state, dan layout mobile-first tanpa mengorbankan tabel operasional desktop.
+7. **Performa proporsional.** Gunakan pagination/virtualization untuk tabel besar, debounce untuk pencarian, lazy loading bila bermanfaat, dan hindari fetch atau re-render berulang tanpa alasan.
+
+**Struktur frontend yang menjadi acuan:**
+
+```text
+apps/web/src/features/<domain>/<feature>/
+├── components/
+├── hooks/
+├── services/ atau <feature>Api.ts
+├── types/
+├── utils/
+└── <Feature>Page.tsx
+```
+
+### 5.3 Testing dan Definition of Done
+
+Sebuah task belum boleh ditandai selesai hanya karena UI tampil atau kode berhasil dikompilasi. Minimum Definition of Done:
+
+1. Alur utama dan edge case penting diuji, termasuk data kosong, input rusak, duplikat, retry, dan kegagalan transaksi.
+2. Parser/import diuji dengan fixture yang mewakili file asli setiap sumber; data sensitif harus disamarkan.
+3. Operasi multi-record yang harus atomik memiliki test rollback dan idempotency.
+4. Query diperiksa dari risiko N+1, full scan yang tidak perlu, serta kebutuhan index.
+5. Tidak ada hardcoded mock pada alur production tanpa label dan pemisahan yang jelas.
+6. `pnpm typecheck` dan `pnpm build` lulus tanpa error maupun warning baru.
+7. UI diverifikasi untuk desktop dan mobile pada state default, loading, empty, error, dan success.
+8. Perubahan schema memakai migration dan mencantumkan dampak serta strategi rollback.
+9. File yang diubah tetap mengikuti boundary domain; refactor di luar scope harus dipisahkan dari task fitur.
+10. Roadmap/progress diperbarui hanya setelah implementasi dan verifikasi selesai.
 
 ---
 
@@ -866,6 +1083,8 @@ Batas: tidak akses NIK/gaji tanpa izin; tidak menulis data bisnis.
 | 7 | Reports (read-only) | tinggal query karena semua SSOT |
 | 8 | AI Assistant (read-only) | konsumen akhir data |
 
+> **Gate khusus Marketing Workspace:** meskipun full User Management tetap Fase 6, subset IAM minimal (account, session, permission, platform/source assignment, dan aktor audit nyata) wajib dimajukan sebagai prerequisite sebelum import berbasis role dirilis ke production. Tanpa gate ini, pemisahan TikTok/Shopee/Meta/CRM hanya dianggap perubahan UI.
+>
 > Reports & AI sengaja terakhir: begitu semua data SSOT, keduanya cukup **membaca**, tidak perlu logika bisnis baru.
 
 ---

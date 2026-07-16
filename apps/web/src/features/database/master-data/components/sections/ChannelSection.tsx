@@ -1,171 +1,291 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { DataPanel } from "@/features/database/components/DataPanel";
-import { KpiCard } from "@/features/database/components/KpiCard";
 import { StatusBadge } from "@/features/database/components/StatusBadge";
 import { usePagedData } from "../../hooks/usePagedData";
-import { formatNumber, formatRupiah } from "../../lib/format";
-import { EditRecordModal, type EditField } from "../EditRecordModal";
-import { MasterTable, NotesList, RowActionButton, type MasterColumn } from "../MasterTable";
+import { MasterTable, RowActionButton, type MasterColumn } from "../MasterTable";
 import { ToolbarSelect } from "../TableToolbar";
+import { EditRecordModal, type EditField } from "../EditRecordModal";
 
 interface ChannelRow {
   id: string;
   name: string;
   type: string;
-  original: string;
-  alias?: string;
-  orders: number;
-  value: number;
-  status: string;
+  storeCount: number;
+  stores: string[] | string;
 }
 
 interface MitraRow {
   id: string;
+  id_mitra: string;
   name: string;
   original: string;
-  orders: number;
-  value: number;
-  status: string;
 }
 
-interface DivisiRow {
-  name: string;
-  orders: number;
+function StoreDetailModal({ channel, onClose }: { channel: ChannelRow; onClose: () => void }) {
+  const stores = Array.isArray(channel.stores) ? channel.stores : [];
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <h3 className="text-lg font-black text-slate-900">Daftar Toko: {channel.name}</h3>
+        <p className="mt-1 text-sm text-slate-500">Terdapat {channel.storeCount} toko yang terdaftar di jenis {channel.type}.</p>
+        
+        <ul className="mt-4 flex max-h-[300px] flex-col gap-2 overflow-y-auto">
+          {stores.map((store, i) => (
+            <li key={i} className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm font-semibold text-slate-700">
+              {store}
+            </li>
+          ))}
+          {stores.length === 0 && (
+            <li className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm font-semibold text-slate-400 italic">
+              Belum ada toko yang didaftarkan.
+            </li>
+          )}
+        </ul>
+
+        <button 
+          onClick={onClose}
+          className="mt-6 w-full rounded-xl bg-brand-red py-2.5 text-sm font-bold text-white transition hover:bg-brand-red/90"
+        >
+          Tutup
+        </button>
+      </div>
+    </div>
+  );
 }
 
-const notes = [
-  "Channel = tempat order masuk. Jenisnya 4: Akuisisi (iklan), Retensi (CRM/WA), Marketplace (TikTok/Shopee), dan Offline (Stokis) — sesuai arahan owner.",
-  "Stokis = jalur penjualan lewat agen offline. Masih 0 karena data lama belum ada transaksi offline; tempatnya sudah disiapkan.",
-  "'Belum Tercatat' artinya platform tidak dicatat di data lama — bukan data hilang. Ke depan channel wajib diisi saat input.",
-  "Mitra (UP DM, JAWARA, dll.) dicatat pada tabel sendiri, bukan dicampur ke channel.",
-];
+function EditChannelModal({ 
+  record, 
+  isAdding, 
+  onClose, 
+  onSave 
+}: { 
+  record: ChannelRow; 
+  isAdding: boolean;
+  onClose: () => void;
+  onSave: (record: ChannelRow) => void;
+}) {
+  const [name, setName] = useState(record.name);
+  const [type, setType] = useState(record.type);
+  const [stores, setStores] = useState<string[]>(Array.isArray(record.stores) ? record.stores : []);
 
-const channelEditFields: EditField<ChannelRow>[] = [
-  { key: "id", label: "ID", readOnly: true },
-  { key: "name", label: "Channel" },
-  { key: "type", label: "Jenis" },
-  { key: "original", label: "Nama Asli dari Data", readOnly: true },
-  { key: "alias", label: "Alias Tambahan (pisah ;)" },
-  { key: "orders", label: "Pesanan", type: "number", readOnly: true },
-  { key: "value", label: "Nilai", type: "number", readOnly: true },
-  { key: "status", label: "Status" },
-];
+  const addStore = () => setStores([...stores, ""]);
+  const updateStore = (index: number, val: string) => {
+    const newStores = [...stores];
+    newStores[index] = val;
+    setStores(newStores);
+  };
+  const removeStore = (index: number) => {
+    setStores(stores.filter((_, i) => i !== index));
+  };
+
+  const handleSave = () => {
+    const finalStores = stores.map(s => s.trim()).filter(Boolean);
+    onSave({ ...record, name, type, stores: finalStores });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+        <h3 className="mb-6 text-lg font-black text-slate-900">{isAdding ? "Tambah Channel" : "Edit Channel"}</h3>
+
+        <div className="flex flex-col gap-4">
+          {!isAdding && (
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">ID</label>
+              <input value={record.id} readOnly className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-500" />
+            </div>
+          )}
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Nama Channel</label>
+              <input value={name} onChange={e => setName(e.target.value)} className="w-full rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-900" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Jenis</label>
+              <input value={type} onChange={e => setType(e.target.value)} placeholder="Misal: marketplace" className="w-full rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-900" />
+            </div>
+          </div>
+
+          <div className="mt-2">
+            <div className="mb-3 flex items-center justify-between">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Daftar Toko</label>
+              <button onClick={addStore} className="flex items-center gap-1 rounded-lg bg-brand-red/10 px-3 py-1.5 text-xs font-bold text-brand-red transition hover:bg-brand-red/20">
+                <Plus className="size-3" /> Tambah Toko
+              </button>
+            </div>
+            
+            <div className="flex max-h-[250px] flex-col gap-3 overflow-y-auto pr-2">
+              {stores.length === 0 && (
+                <p className="text-xs italic text-slate-400">Belum ada toko yang ditambahkan. Klik tombol "Tambah Toko".</p>
+              )}
+              {stores.map((store, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input 
+                    value={store} 
+                    onChange={e => updateStore(i, e.target.value)} 
+                    placeholder={`Nama Toko ${i + 1}`}
+                    className="flex-1 rounded-xl border border-slate-200 p-2.5 text-sm font-medium text-slate-900" 
+                  />
+                  <button onClick={() => removeStore(i)} className="rounded-xl border border-red-200 p-2.5 text-red-500 hover:bg-red-50 hover:text-red-600 transition">
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 flex items-center justify-end gap-3 border-t border-slate-100 pt-6">
+          <button onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition">Batal</button>
+          <button onClick={handleSave} className="rounded-xl bg-brand-red px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-red/90 transition">Simpan Perubahan</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function ChannelSection() {
+  const [viewStore, setViewStore] = useState<ChannelRow | null>(null);
+  
+  // State for Channel
   const [editingChannel, setEditingChannel] = useState<ChannelRow | null>(null);
-  const [divisiRows, setDivisiRows] = useState<DivisiRow[]>([]);
-  const channels = usePagedData<ChannelRow>("/api/master/channels", ["id", "name", "type", "original"]);
-  const mitra = usePagedData<MitraRow>("/api/master/mitra", ["id", "name", "original"]);
+  const [isAddingChannel, setIsAddingChannel] = useState(false);
+  const dataChannel = usePagedData<ChannelRow>("/api/master/channel-stores", ["name", "type"]);
 
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/master/divisi")
-      .then((res) => (res.ok ? (res.json() as Promise<DivisiRow[]>) : Promise.reject()))
-      .then((data) => {
-        if (alive) setDivisiRows(data);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, []);
+  // State for Mitra
+  const [editingMitra, setEditingMitra] = useState<MitraRow | null>(null);
+  const [isAddingMitra, setIsAddingMitra] = useState(false);
+  const dataMitra = usePagedData<MitraRow>("/api/master/mitra", ["id_mitra", "name", "original"]);
 
-  // KPI dihitung dari data yang sama dengan tabel — tidak ada angka mati.
-  const kpiItems = useMemo(() => {
-    const tanpaPlatform = channels.allRows.find((row) => row.name === "Belum Tercatat")?.orders ?? 0;
-    return [
-      { label: "Channel", value: formatNumber(channels.allRows.length), detail: "Termasuk Stokis", tone: "green" as const },
-      { label: "Divisi Tim", value: formatNumber(divisiRows.length), detail: "Terpisah", tone: "blue" as const },
-      { label: "Mitra", value: formatNumber(mitra.allRows.length), detail: "Tabel sendiri", tone: "green" as const },
-      { label: "Pesanan Tanpa Platform", value: formatNumber(tanpaPlatform), detail: "Belum tercatat", tone: "amber" as const },
-    ];
-  }, [channels.allRows, mitra.allRows, divisiRows]);
-
+  // Handlers for Channel
   const saveChannel = async (updated: ChannelRow) => {
-    const res = await fetch(`/api/master/channels/${encodeURIComponent(updated.id)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: updated.name, type: updated.type, original: updated.alias, status: updated.status }),
-    });
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      window.alert(data.error ?? "Gagal menyimpan mapping channel.");
-      return;
+    try {
+      if (isAddingChannel) {
+        const res = await fetch("/api/master/channel-stores", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
+        });
+        if (!res.ok) throw new Error("Gagal menambah data channel.");
+      } else {
+        const res = await fetch(`/api/master/channel-stores/${encodeURIComponent(updated.id)}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
+        });
+        if (!res.ok) throw new Error("Gagal mengedit data channel.");
+      }
+      dataChannel.reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Terjadi kesalahan.");
+    } finally {
+      setEditingChannel(null);
+      setIsAddingChannel(false);
     }
-    channels.updateRows((current) => current.map((row) => (row.id === updated.id ? updated : row)), { persisted: true });
-    setEditingChannel(null);
   };
+
   const deleteChannel = async (id: string) => {
-    if (!window.confirm("Arsipkan channel ini? Data tidak dihapus permanen.")) return;
-    const res = await fetch(`/api/master/channels/${encodeURIComponent(id)}`, { method: "DELETE" });
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      window.alert(data.error ?? "Gagal mengarsipkan channel.");
-      return;
+    if (!window.confirm("Hapus data Channel ini?")) return;
+    try {
+      const res = await fetch(`/api/master/channel-stores/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Gagal menghapus data.");
+      dataChannel.reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Terjadi kesalahan.");
     }
-    channels.updateRows((current) => current.filter((row) => row.id !== id), { persisted: true });
+  };
+
+  // Handlers for Mitra
+  const saveMitra = async (updated: MitraRow) => {
+    try {
+      if (isAddingMitra) {
+        const res = await fetch("/api/master/mitra", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
+        });
+        if (!res.ok) throw new Error("Gagal menambah data mitra.");
+      } else {
+        const res = await fetch(`/api/master/mitra/${encodeURIComponent(updated.id)}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
+        });
+        if (!res.ok) throw new Error("Gagal mengedit data mitra.");
+      }
+      dataMitra.reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Terjadi kesalahan.");
+    } finally {
+      setEditingMitra(null);
+      setIsAddingMitra(false);
+    }
+  };
+
+  const deleteMitra = async (id: string) => {
+    if (!window.confirm("Hapus data Mitra ini?")) return;
+    try {
+      const res = await fetch(`/api/master/mitra/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Gagal menghapus data.");
+      dataMitra.reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Terjadi kesalahan.");
+    }
   };
 
   const channelColumns: MasterColumn<ChannelRow>[] = [
-    { key: "id", label: "ID", tone: "muted" },
-    { key: "name", label: "Channel", tone: "strong" },
-    { key: "type", label: "Jenis" },
-    { key: "original", label: "Nama Asli" },
-    { key: "orders", label: "Pesanan", align: "right", render: (row) => formatNumber(row.orders) },
-    { key: "value", label: "Nilai", align: "right", tone: "strong", render: (row) => formatRupiah(row.value) },
-    { key: "status", label: "Status", align: "right", render: (row) => <StatusBadge label={row.status} /> },
+    { key: "id", label: "ID", tone: "muted", width: 80 },
+    { key: "name", label: "Channel", tone: "strong", width: 300 },
+    { 
+      key: "type", label: "Jenis", width: 200, 
+      render: (row) => <StatusBadge label={row.type} tone={row.type === "marketplace" ? "blue" : row.type === "akuisisi" ? "purple" : "slate"} /> 
+    },
+    { 
+      key: "storeCount", label: "Jumlah Toko", width: 150, align: "right",
+      render: (row) => (
+        <button 
+          onClick={() => setViewStore(row)}
+          className="rounded-lg bg-brand-red/10 px-3 py-1 text-xs font-bold text-brand-red transition hover:bg-brand-red/20"
+        >
+          {row.storeCount} Toko (Lihat)
+        </button>
+      )
+    },
   ];
 
   const mitraColumns: MasterColumn<MitraRow>[] = [
-    { key: "id", label: "ID", tone: "muted" },
-    { key: "name", label: "Mitra", tone: "strong" },
-    { key: "original", label: "Nama Asli" },
-    { key: "orders", label: "Pesanan", align: "right", render: (row) => formatNumber(row.orders) },
-    { key: "value", label: "Nilai", align: "right", tone: "strong", render: (row) => formatRupiah(row.value) },
-    { key: "status", label: "Status", align: "right", render: (row) => <StatusBadge label={row.status} /> },
+    { key: "id", label: "UUID", tone: "muted", width: 80 },
+    { key: "id_mitra", label: "ID Mitra", tone: "strong", width: 120 },
+    { key: "name", label: "Nama Mitra", tone: "strong", width: 250 },
+    { key: "original", label: "Nama Asli (Alias)", width: 400 },
   ];
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {kpiItems.map((item) => (
-          <KpiCard key={item.label} item={item} />
-        ))}
-      </div>
+  const activeChannelRecord = editingChannel || (isAddingChannel ? { id: "", name: "", type: "", storeCount: 0, stores: [] } : null);
+  const activeMitraRecord = editingMitra || (isAddingMitra ? { id: "", id_mitra: "", name: "", original: "" } : null);
 
-      <DataPanel title="Daftar Channel" subtitle="Asal order berdasarkan platform.">
+  return (
+    <div className="flex flex-col gap-8">
+      {/* CHANNEL TABLE */}
+      <DataPanel title="Data Channel" subtitle="Daftar asal order dan rincian toko (Terhubung langsung ke database).">
         <MasterTable
-          paged={channels}
+          paged={dataChannel}
           columns={channelColumns}
           rowKey={(row) => row.id}
-          searchPlaceholder="Cari channel, jenis, nama asli…"
-          minWidth={820}
+          searchPlaceholder="Cari nama channel..."
+          minWidth={740}
           toolbar={
             <>
               <ToolbarSelect
-                value={channels.filters.type ?? ""}
-                onChange={(v) => channels.setFilter("type", v)}
+                value={dataChannel.filters.type ?? ""}
+                onChange={(v) => dataChannel.setFilter("type", v)}
                 allLabel="Semua Jenis"
-                options={channels.distinct("type").map((t) => ({ value: t, label: t }))}
+                options={dataChannel.distinct("type").map((t) => ({ value: t, label: t }))}
               />
-              <ToolbarSelect
-                value={channels.filters.status ?? ""}
-                onChange={(v) => channels.setFilter("status", v)}
-                allLabel="Semua Status"
-                options={["Aktif", "Perlu review"].map((s) => ({ value: s, label: s }))}
-              />
-              <ToolbarSelect
-                value={channels.sort}
-                onChange={channels.setSort}
-                allLabel="Urutan asli"
-                options={[
-                  { value: "orders:desc", label: "Pesanan terbanyak" },
-                  { value: "value:desc", label: "Nilai terbesar" },
-                  { value: "name:asc", label: "Channel A-Z" },
-                ]}
-              />
+              <button
+                type="button"
+                onClick={() => setIsAddingChannel(true)}
+                className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-brand-red px-4 text-sm font-bold text-white transition hover:bg-brand-red/90"
+              >
+                <Plus className="size-4" />
+                Tambah Channel
+              </button>
             </>
           }
           renderActions={(row) => (
@@ -177,66 +297,59 @@ export function ChannelSection() {
         />
       </DataPanel>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <DataPanel title="Daftar Mitra" subtitle="Mitra penjualan dicatat terpisah dari channel." className="lg:col-span-2">
-          <MasterTable
-            paged={mitra}
-            columns={mitraColumns}
-            rowKey={(row) => row.id}
-            searchPlaceholder="Cari mitra…"
-            minWidth={700}
-            maxHeight={420}
-            toolbar={
-              <>
-                <ToolbarSelect
-                  value={mitra.filters.status ?? ""}
-                  onChange={(v) => mitra.setFilter("status", v)}
-                  allLabel="Semua Status"
-                  options={["Aktif", "Perlu review"].map((s) => ({ value: s, label: s }))}
-                />
-                <ToolbarSelect
-                  value={mitra.sort}
-                  onChange={mitra.setSort}
-                  allLabel="Urutan asli"
-                  options={[
-                    { value: "orders:desc", label: "Pesanan terbanyak" },
-                    { value: "value:desc", label: "Nilai terbesar" },
-                    { value: "name:asc", label: "Mitra A-Z" },
-                  ]}
-                />
-              </>
-            }
-          />
-        </DataPanel>
-
-        <DataPanel title="Divisi Tim" subtitle="Jumlah pesanan yang dikerjakan tiap divisi.">
-          {divisiRows.length === 0 ? (
-            <p className="py-6 text-center text-sm font-medium text-slate-400">Memuat data…</p>
-          ) : (
-            <ul className="flex flex-col divide-y divide-slate-100">
-              {divisiRows.map((row) => (
-                <li key={row.name} className="flex items-center justify-between py-3 text-sm">
-                  <span className="font-semibold text-slate-950">{row.name}</span>
-                  <span className="font-medium text-slate-600">{formatNumber(row.orders)} pesanan</span>
-                </li>
-              ))}
-            </ul>
+      {/* MITRA TABLE */}
+      <DataPanel title="Daftar Mitra" subtitle="Data mitra yang bekerja sama secara terpisah dari Channel utama.">
+        <MasterTable
+          paged={dataMitra}
+          columns={mitraColumns}
+          rowKey={(row) => row.id}
+          searchPlaceholder="Cari nama mitra atau alias..."
+          minWidth={740}
+          toolbar={
+            <button
+              type="button"
+              onClick={() => setIsAddingMitra(true)}
+              className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-brand-red px-4 text-sm font-bold text-white transition hover:bg-brand-red/90"
+            >
+              <Plus className="size-4" />
+              Tambah Mitra
+            </button>
+          }
+          renderActions={(row) => (
+            <>
+              <RowActionButton label="Edit" onClick={() => setEditingMitra(row)} />
+              <RowActionButton label="Hapus" danger onClick={() => deleteMitra(row.id)} />
+            </>
           )}
-        </DataPanel>
-      </div>
-
-      <DataPanel title="Catatan Channel">
-        <NotesList notes={notes} />
+        />
       </DataPanel>
 
-      {editingChannel && (
-        <EditRecordModal
-          title="Edit Channel"
-          record={editingChannel}
-          fields={channelEditFields}
-          onClose={() => setEditingChannel(null)}
+      {/* MODALS */}
+      {viewStore && (
+        <StoreDetailModal channel={viewStore} onClose={() => setViewStore(null)} />
+      )}
+
+      {activeChannelRecord && (
+        <EditChannelModal
+          isAdding={isAddingChannel}
+          record={activeChannelRecord as ChannelRow}
+          onClose={() => { setEditingChannel(null); setIsAddingChannel(false); }}
           onSave={saveChannel}
-          note="Nama channel dan jenis tersimpan ke database. Nama asli dikunci; masukkan alias baru bila perlu."
+        />
+      )}
+
+      {activeMitraRecord && (
+        <EditRecordModal
+          title={isAddingMitra ? "Tambah Mitra" : "Edit Mitra"}
+          record={activeMitraRecord}
+          fields={[
+            ...(isAddingMitra ? [] : [{ key: "id", label: "UUID", readOnly: true }]),
+            { key: "id_mitra", label: "ID Mitra (Misal: MTR-007)" },
+            { key: "name", label: "Nama Mitra" },
+            { key: "original", label: "Nama Asli / Alias (Bisa dipisah dengan slash '/')" },
+          ] as EditField<typeof activeMitraRecord>[]}
+          onClose={() => { setEditingMitra(null); setIsAddingMitra(false); }}
+          onSave={saveMitra as any}
         />
       )}
     </div>

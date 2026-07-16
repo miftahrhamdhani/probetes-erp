@@ -15,6 +15,9 @@ export function mapOrderRows(
   const mappedHeaders = Object.fromEntries(
     Object.entries(ORDER_ALIASES).map(([key, aliases]) => [key, findHeader(lookup, aliases)]),
   ) as Record<keyof typeof ORDER_ALIASES, string | null>;
+  const orderDateHeaders = [...new Set(ORDER_ALIASES.orderDate
+    .map((alias) => findHeader(lookup, [alias]))
+    .filter((header): header is string => Boolean(header)))];
   const fileErrors: string[] = [];
   const missing = [
     [mappedHeaders.orderDate, "tanggal pesanan"],
@@ -29,15 +32,26 @@ export function mapOrderRows(
   if (mismatch) fileErrors.push(mismatch);
 
   const seen = new Set<string>();
-  const parsedRows: ParsedImportRow[] = rows.map((raw, index) => {
+  const sourceRows = rows.map((raw, index) => ({ raw, index })).filter(({ raw }) => {
+    const signature = [
+      field(raw, mappedHeaders.invoice),
+      field(raw, mappedHeaders.orderDate),
+      field(raw, mappedHeaders.product),
+      field(raw, mappedHeaders.qty),
+      field(raw, mappedHeaders.total),
+    ].join(" ");
+    return !/(?:platform unique order id|order created time|sku sold quantity|order total amount paid)/i.test(signature);
+  });
+  const parsedRows: ParsedImportRow[] = sourceRows.map(({ raw, index }) => {
     let status: ImportValidationStatus = fileErrors.length ? "error" : "valid";
     const notes = [...fileErrors];
-    const orderDateRaw = field(raw, mappedHeaders.orderDate);
+    const orderDateRaw = orderDateHeaders.map((header) => field(raw, header)).find(Boolean) ?? "";
     const orderDate = parseImportDate(orderDateRaw);
     const invoice = field(raw, mappedHeaders.invoice);
     const customer = field(raw, mappedHeaders.customer);
     const phoneRaw = field(raw, mappedHeaders.phone);
-    const phoneNormalized = normalizeImportPhone(phoneRaw);
+    const isMaskedPhone = /[*x]/i.test(phoneRaw);
+    const phoneNormalized = isMaskedPhone ? null : normalizeImportPhone(phoneRaw);
     const product = field(raw, mappedHeaders.product);
     const qtyRaw = field(raw, mappedHeaders.qty);
     const qtyNumber = parseImportNumber(qtyRaw);
@@ -46,6 +60,8 @@ export function mapOrderRows(
     const total = parseImportNumber(totalRaw);
     const unitPriceRaw = field(raw, mappedHeaders.unitPrice);
     const unitPrice = unitPriceRaw ? parseImportNumber(unitPriceRaw) : null;
+    const itemSubtotalRaw = field(raw, mappedHeaders.itemSubtotal);
+    const itemSubtotal = itemSubtotalRaw ? parseImportNumber(itemSubtotalRaw) : null;
 
     const missingValues = [
       [orderDateRaw, "Tanggal pesanan"], [invoice, "No invoice"], [customer, "Customer"],
@@ -71,9 +87,15 @@ export function mapOrderRows(
       status = escalateStatus(status, "error");
       notes.push("Harga produk tidak valid.");
     }
+    if (itemSubtotalRaw && (itemSubtotal === null || itemSubtotal < 0)) {
+      status = escalateStatus(status, "error");
+      notes.push("Subtotal produk tidak valid.");
+    }
     if (!phoneRaw) {
       status = escalateStatus(status, "review");
       notes.push("Nomor HP belum diisi.");
+    } else if (isMaskedPhone) {
+      notes.push("Nomor HP tersensor oleh marketplace; lengkapi melalui Admin Inputer setelah import.");
     } else if (!phoneNormalized) {
       status = escalateStatus(status, "review");
       notes.push("Nomor HP perlu dicek.");
@@ -81,7 +103,7 @@ export function mapOrderRows(
 
     const orderKey = invoice ? `${platform}|${invoice.toLocaleLowerCase("id-ID").trim()}` : null;
     const itemSignature = orderKey
-      ? [orderKey, product, qty ?? "", unitPrice ?? "", total ?? ""].map((part) => String(part).toLocaleLowerCase("id-ID").trim()).join("|")
+      ? [orderKey, product, qty ?? "", unitPrice ?? "", itemSubtotal ?? ""].map((part) => String(part).toLocaleLowerCase("id-ID").trim()).join("|")
       : null;
     if (itemSignature && seen.has(itemSignature) && status !== "error") {
       status = "duplicate";
@@ -94,8 +116,18 @@ export function mapOrderRows(
     const orderStatus = field(raw, mappedHeaders.orderStatus);
     const customerType = field(raw, mappedHeaders.customerType);
     const paymentMethod = field(raw, mappedHeaders.paymentMethod);
+    const paymentStatus = field(raw, mappedHeaders.paymentStatus);
+    const courier = field(raw, mappedHeaders.courier);
+    const city = field(raw, mappedHeaders.city);
+    const province = field(raw, mappedHeaders.province);
+    const address = field(raw, mappedHeaders.address);
     const roundedTotal = total === null ? null : Math.round(total);
-    const roundedUnitPrice = unitPrice === null ? (qty && roundedTotal !== null ? Math.round(roundedTotal / qty) : null) : Math.round(unitPrice);
+    const roundedSubtotal = itemSubtotal === null
+      ? (unitPrice !== null && qty ? Math.round(unitPrice * qty) : roundedTotal)
+      : Math.round(itemSubtotal);
+    const roundedUnitPrice = unitPrice === null
+      ? (qty && roundedSubtotal !== null ? Math.round(roundedSubtotal / qty) : null)
+      : Math.round(unitPrice);
     const display = {
       "Tanggal Pesanan": orderDate ?? (orderDateRaw || "-"),
       Platform: PLATFORM_LABEL[platform],
@@ -108,8 +140,14 @@ export function mapOrderRows(
       Produk: product || "-",
       Qty: qty,
       "Harga Produk": roundedUnitPrice,
+      "Subtotal Produk": roundedSubtotal,
       "Total Bayar": roundedTotal,
       "Status Pesanan": orderStatus || "-",
+      "Status Pembayaran": paymentStatus || "-",
+      "Metode Bayar": paymentMethod || "-",
+      Ekspedisi: courier || "-",
+      "Kota/Kabupaten": city || "-",
+      Provinsi: province || "-",
       "Tipe Pelanggan": customerType || "-",
     };
     return {
@@ -127,10 +165,16 @@ export function mapOrderRows(
         productId: null,
         qty,
         unitPrice: roundedUnitPrice,
+        itemSubtotal: roundedSubtotal,
         total: roundedTotal,
         orderStatus: orderStatus || null,
+        paymentStatus: paymentStatus || null,
         customerType: customerType || null,
         paymentMethod: paymentMethod || null,
+        courier: courier || null,
+        city: city || null,
+        province: province || null,
+        address: address || null,
       },
       display,
       status,

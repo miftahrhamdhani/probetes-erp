@@ -10,7 +10,10 @@ export function DateRangePicker({ value, onChange }: { value: DateRangeValue; on
   const [error, setError] = useState<string | null>(null);
 
   // URL dapat berubah dari preset/drilldown; selaraskan input manual dengan nilai baru.
-  useEffect(() => setDraft(value), [value.endDate, value.startDate]);
+  useEffect(
+    () => setDraft({ startDate: value.startDate, endDate: value.endDate }),
+    [value.endDate, value.startDate]
+  );
 
   const applyDraft = () => {
     const result = validateDateRange(draft.startDate, draft.endDate);

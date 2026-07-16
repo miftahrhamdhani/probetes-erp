@@ -67,6 +67,12 @@ export interface StagingRow {
   target_entity: "ad_campaign_metrics" | "orders";
 }
 
+/** Bentuk minimum staging yang dibutuhkan oleh preview riwayat. */
+export type HistoryPreviewRow = Pick<
+  StagingRow,
+  "row_id" | "row_number" | "display_data" | "validation_status" | "validation_notes"
+>;
+
 export function isUniqueViolation(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
 }
@@ -123,14 +129,30 @@ export async function findSelectedOption(
 
 // ---- preview enrichment ---------------------------------------------------
 export function loadProductLookup(client: PoolClient) {
-  return client.query<{ lookup_name: string; product_id: string }>(`
-    SELECT lower(trim(product_final_name)) AS lookup_name, product_id
+  return client.query<{ lookup_name: string; product_id: string; product_name: string }>(`
+    SELECT lower(trim(product_final_name)) AS lookup_name, product_id, product_final_name AS product_name
     FROM master.products
     WHERE nullif(trim(product_final_name), '') IS NOT NULL
     UNION
-    SELECT lower(trim(original_name)) AS lookup_name, product_id
-    FROM master.product_aliases
-    WHERE product_id IS NOT NULL AND nullif(trim(original_name), '') IS NOT NULL
+    SELECT lower(trim(alias.original_name)) AS lookup_name, alias.product_id, product.product_final_name AS product_name
+    FROM master.product_aliases alias
+    JOIN master.products product ON product.product_id = alias.product_id
+    WHERE alias.product_id IS NOT NULL AND nullif(trim(alias.original_name), '') IS NOT NULL
+  `);
+}
+
+export function loadCourierLookup(client: PoolClient) {
+  return client.query<{ lookup_name: string; courier_id: string; courier_name: string }>(`
+    SELECT lower(trim(courier_final_name)) AS lookup_name,
+      courier_id, courier_final_name AS courier_name
+    FROM master.couriers
+    WHERE nullif(trim(courier_final_name), '') IS NOT NULL
+    UNION
+    SELECT lower(trim(alias_name)) AS lookup_name,
+      courier.courier_id, courier.courier_final_name AS courier_name
+    FROM master.couriers courier
+    CROSS JOIN LATERAL regexp_split_to_table(coalesce(courier.original_names, ''), '\\s*/\\s*') alias_name
+    WHERE nullif(trim(alias_name), '') IS NOT NULL
   `);
 }
 
@@ -286,40 +308,55 @@ export async function findOrCreateCustomer(
   batch: BatchRow,
   data: StagingRow["parsed_data"],
 ): Promise<string> {
-  const phone = String(data.phoneNormalized ?? "");
-  const existing = await client.query<{ customer_id: string }>(`
-    SELECT customer_id FROM master.customers
-    WHERE phone_normalized = $1
-    ORDER BY customer_id
-    LIMIT 1
-  `, [phone]);
-  if (existing.rows[0]) return existing.rows[0].customer_id;
+  const phone = String(data.phoneNormalized ?? "").trim() || null;
+  if (phone) {
+    const existing = await client.query<{ customer_id: string }>(`
+      SELECT customer_id FROM master.customers
+      WHERE phone_normalized = $1
+      ORDER BY customer_id
+      LIMIT 1
+    `, [phone]);
+    if (existing.rows[0]) return existing.rows[0].customer_id;
+  }
   const channelId = await findChannelId(client, batch.platform);
   const created = await client.query<{ customer_id: string }>(`
     INSERT INTO master.customers (
-      customer_id, name, phone, phone_normalized, source_origin,
-      channel_id, transaction_count, status, is_crm_target
+      customer_id, name, phone, phone_normalized, address, city, province,
+      source_origin, channel_id, transaction_count, status, is_crm_target
     ) VALUES (
       'PB-CUST-IMP-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)),
-      $1,$2,$3,$4,$5,0,'Baru',true
+      $1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10
     ) RETURNING customer_id
-  `, [data.customer, data.phone, phone, PLATFORM_DB_LABEL[batch.platform], channelId]);
+  `, [
+    data.customer,
+    data.phone,
+    phone,
+    data.address,
+    data.city,
+    data.province,
+    PLATFORM_DB_LABEL[batch.platform],
+    channelId,
+    phone ? "Baru" : "Perlu Dilengkapi",
+    Boolean(phone),
+  ]);
   return created.rows[0]!.customer_id;
 }
 
-export async function insertOrderWithItem(
+export async function insertOrderWithItems(
   client: PoolClient,
   batch: BatchRow,
-  data: StagingRow["parsed_data"],
+  orderRows: Array<StagingRow["parsed_data"]>,
   channelId: string,
   customerId: string,
 ): Promise<string | null> {
+  const data = orderRows[0];
+  if (!data) throw new Error("Pesanan tidak memiliki item untuk disimpan.");
   const orderId = String(data.invoice ?? "").trim();
   const inserted = await client.query<{ order_id: string }>(`
     INSERT INTO orders.orders (
-      order_id, customer_id, order_date, channel_id, payment_method,
-      total_amount, order_status, source_file_id, flag
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'valid')
+      order_id, customer_id, order_date, channel_id, courier_id,
+      payment_method, payment_status, total_amount, order_status, source_file_id, flag
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'valid')
     ON CONFLICT (order_id) DO NOTHING
     RETURNING order_id
   `, [
@@ -327,31 +364,56 @@ export async function insertOrderWithItem(
     customerId,
     data.orderDate,
     channelId,
+    data.courierId,
     data.paymentMethod,
+    data.paymentStatus,
     data.total,
     data.orderStatus ?? "Imported",
     batch.batch_id,
   ]);
   if (!inserted.rows[0]) return null;
+  const items = orderRows.map((item) => ({
+    product_id: item.productId ?? null,
+    product: item.product ?? null,
+    qty: item.qty ?? null,
+    unit_price: item.unitPrice ?? null,
+    subtotal: item.itemSubtotal ?? null,
+  }));
   await client.query(`
     INSERT INTO orders.order_items (
       order_item_id, order_id, product_id, original_product_name,
       qty, unit_price, subtotal, status
-    ) VALUES (
-      'PB-ITEM-IMP-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)),
-      $1,$2,$3,$4,$5,$6,'valid'
     )
-  `, [orderId, data.productId, data.product, data.qty, data.unitPrice, data.total]);
+    SELECT
+      'PB-ITEM-IMP-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)),
+      $1, item.product_id, item.product, item.qty, item.unit_price, item.subtotal, 'valid'
+    FROM jsonb_to_recordset($2::jsonb) AS item(
+      product_id text,
+      product text,
+      qty integer,
+      unit_price bigint,
+      subtotal bigint
+    )
+  `, [orderId, JSON.stringify(items)]);
   const trackingNumber = String(data.trackingNumber ?? "").trim();
   if (trackingNumber) {
     await client.query(`
       INSERT INTO tracking.shipments (
-        shipment_id, order_id, tracking_number, customer_id, payment_method, package_status, flag
+        shipment_id, order_id, tracking_number, customer_id, ship_city,
+        courier_id, payment_method, package_status, flag
       ) VALUES (
         'PB-SHIP-IMP-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)),
-        $1,$2,$3,$4,'Menunggu Pickup','valid'
+        $1,$2,$3,$4,$5,$6,$7,'valid'
       )
-    `, [orderId, trackingNumber, customerId, data.paymentMethod]);
+    `, [
+      orderId,
+      trackingNumber,
+      customerId,
+      data.city,
+      data.courierId,
+      data.paymentMethod,
+      data.orderStatus ?? "Menunggu Pickup",
+    ]);
   }
   await client.query(`
     UPDATE master.customers
@@ -425,10 +487,9 @@ export function findHistory(batchId: string) {
   return query<BatchRow>(`${HISTORY_SELECT} WHERE batch_id = $1`, [batchId]);
 }
 
-export function listBatchRows(batchId: string) {
-  return query<StagingRow>(`
-    SELECT row_id, row_number, raw_data, parsed_data, display_data,
-      validation_status, validation_notes, duplicate_key, target_entity
+export function listHistoryPreviewRows(batchId: string) {
+  return query<HistoryPreviewRow>(`
+    SELECT row_id, row_number, display_data, validation_status, validation_notes
     FROM staging.import_rows
     WHERE batch_id = $1
     ORDER BY row_number
