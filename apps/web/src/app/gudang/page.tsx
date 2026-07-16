@@ -1,10 +1,7 @@
+import { redirect } from "next/navigation";
+
+// Menu "Gudang" kini bernama "Warehouse / Gudang" di /warehouse. Redirect agar
+// link/bookmark lama ke /gudang tidak menghasilkan halaman 404.
 export default function GudangPage() {
-  return (
-    <main className="min-h-screen bg-slate-100 p-8 text-slate-950">
-      <section className="mx-auto max-w-5xl rounded-2xl bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-bold tracking-[-0.03em]">Gudang</h1>
-        <p className="mt-2 text-sm font-medium text-slate-600">Module under development.</p>
-      </section>
-    </main>
-  );
+  redirect("/warehouse");
 }

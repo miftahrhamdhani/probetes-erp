@@ -1,8 +1,12 @@
 import type { PoolClient } from "pg";
+import { logChange } from "@/lib/audit";
 import { pool } from "@/server/common/db";
 import { ImportFileError, parseMarketplaceImport } from "./parsers";
+import { normalizeImportPhone } from "./utils";
 import * as repo from "./import.repository";
 import type {
+  AdminInputerResult,
+  AdminInputerUpdateInput,
   ImportCommitResponse,
   ImportHistoryEntry,
   ImportOptionsByPlatform,
@@ -157,8 +161,9 @@ async function enrichOrderRows(client: PoolClient, parsedFile: ParsedImportFile)
 
 async function enrichAdsRows(client: PoolClient, parsedFile: ParsedImportFile, platform: ImportPlatform, advName: string) {
   const existing = await repo.loadExistingAdsKeys(client, platform, advName);
+  const platformLabel = platform === "tiktok" ? "TikTok Ads" : platform === "shopee" ? "Shopee Ads" : "Meta Ads";
   const keys = new Set(existing.rows.map((row) => [
-    platform, advName, row.report_date, row.campaign_name, row.ad_name,
+    platformLabel, advName, row.report_date, row.campaign_name, row.ad_name,
   ].map((part) => part.toLocaleLowerCase("id-ID").trim()).join("|")));
   for (const row of parsedFile.rows) {
     if (row.duplicateKey && keys.has(row.duplicateKey)) {
@@ -169,7 +174,7 @@ async function enrichAdsRows(client: PoolClient, parsedFile: ParsedImportFile, p
 }
 
 function toPreviewRows(rows: ParsedImportRow[]): ImportPreviewRow[] {
-  return rows.map((row) => ({ rowNumber: row.rowNumber, status: row.status, notes: row.notes, data: row.display }));
+  return rows.map((row) => ({ rowNumber: row.rowNumber, status: row.status, notes: row.notes, data: { ...row.raw, ...row.display } }));
 }
 
 export async function createImportPreview(input: {
@@ -192,7 +197,7 @@ export async function createImportPreview(input: {
       ? await requireSelectedOption(client, input.storeOptionId ?? "", input.platform, "store")
       : null;
     const sourceName = adv?.label ?? store?.label ?? "";
-    const parsedFile = await parseMarketplaceImport(input.file, input.platform, input.importType, sourceName);
+    const parsedFile = await parseMarketplaceImport(input.file, input.platform, input.importType, sourceName, input.periodLabel);
     if (input.importType === "order") await enrichOrderRows(client, parsedFile);
     else await enrichAdsRows(client, parsedFile, input.platform, sourceName);
     const counts = rowStatusCounts(parsedFile.rows);
@@ -381,7 +386,7 @@ function asPreviewRow(row: repo.StagingRow): ImportPreviewRow {
     rowNumber: row.row_number,
     status: row.validation_status,
     notes: row.validation_notes ?? [],
-    data: row.display_data,
+    data: { ...row.raw_data, ...row.display_data },
   };
 }
 
@@ -396,4 +401,85 @@ export async function getImportHistoryDetail(batchId: string): Promise<ImportHis
   if (!batches[0]) throw new ImportServiceError("Riwayat import tidak ditemukan.", 404);
   const rows = await repo.listBatchRows(batchId);
   return { ...asHistoryEntry(batches[0]), rows: rows.map(asPreviewRow) };
+}
+
+function asAdminInputerResult(row: Awaited<ReturnType<typeof repo.findAdminInputerOrders>>[number]): AdminInputerResult {
+  return {
+    orderId: row.order_id,
+    orderDate: row.order_date,
+    platform: row.platform,
+    storeId: row.store_id,
+    storeName: row.store_name,
+    orderStatus: row.order_status,
+    paymentMethod: row.payment_method,
+    totalAmount: row.total_amount,
+    channel: row.channel,
+    courier: row.courier,
+    trackingNumber: row.tracking_number,
+    packageStatus: row.package_status,
+    customerId: row.customer_id,
+    customerVersion: row.customer_version,
+    customer: {
+      name: row.name ?? "",
+      phone: row.phone ?? "",
+      address: row.address ?? "",
+      city: row.city ?? "",
+      province: row.province ?? "",
+    },
+    items: row.items,
+    phoneCandidates: [],
+  };
+}
+
+export async function searchAdminInputerOrder(input: {
+  platform: ImportPlatform;
+  storeId: string;
+  orderId?: string;
+  trackingNumber?: string;
+}): Promise<AdminInputerResult> {
+  if (input.platform === "meta") throw new ImportServiceError("Admin Inputer hanya tersedia untuk TikTok Shop dan Shopee.");
+  if (!input.storeId || (!input.orderId?.trim() && !input.trackingNumber?.trim())) {
+    throw new ImportServiceError("Pilih toko dan masukkan ID Pesanan atau nomor resi.");
+  }
+  const client = await pool.connect();
+  try {
+    const rows = await repo.findAdminInputerOrders(client, {
+      platform: input.platform,
+      storeId: input.storeId,
+      orderId: input.orderId?.trim(),
+      trackingNumber: input.orderId?.trim() ? undefined : input.trackingNumber?.trim(),
+    });
+    if (!rows.length) throw new ImportServiceError("Pesanan tidak ditemukan pada platform dan toko tersebut.", 404);
+    if (!input.orderId?.trim() && rows.length > 1) throw new ImportServiceError("Nomor resi ditemukan pada beberapa pesanan. Gunakan ID Pesanan agar lebih tepat.", 409);
+    return asAdminInputerResult(rows[0]!);
+  } finally { client.release(); }
+}
+
+export async function updateAdminInputerIdentity(input: AdminInputerUpdateInput): Promise<AdminInputerResult["customer"] & { customerVersion: string; phoneCandidates?: AdminInputerResult["phoneCandidates"] }> {
+  const normalizedPhone = normalizeImportPhone(input.phone);
+  if (!input.name.trim() || !normalizedPhone || !input.address.trim()) {
+    throw new ImportServiceError("Nama, nomor WA yang valid, dan alamat wajib diisi.");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const before = await repo.loadAdminCustomerForUpdate(client, input.orderId, input.customerId);
+    if (!before) throw new ImportServiceError("Pesanan tidak lagi terhubung ke pelanggan tersebut.", 409);
+    if (before.customer_version !== input.customerVersion) throw new ImportServiceError("Data pelanggan sudah berubah. Muat ulang sebelum menyimpan.", 409);
+    const candidates = await repo.findPhoneCandidates(client, normalizedPhone, input.customerId);
+    if (candidates.rows.length && !input.acknowledgeDuplicatePhone) {
+      await client.query("ROLLBACK");
+      const error = new ImportServiceError("Nomor WA ini sudah terhubung ke pelanggan lain. Periksa sebelum menyimpan.", 409) as ImportServiceError & { candidates?: AdminInputerResult["phoneCandidates"] };
+      error.candidates = candidates.rows.map((row) => ({ customerId: row.customer_id, name: row.name, transactionCount: row.transaction_count }));
+      throw error;
+    }
+    const updated = await repo.updateAdminCustomerIdentity(client, { ...input, name: input.name.trim(), address: input.address.trim(), city: input.city.trim(), province: input.province.trim() }, normalizedPhone);
+    if (!updated) throw new ImportServiceError("Data pelanggan sudah berubah. Muat ulang sebelum menyimpan.", 409);
+    await logChange(client, "master.customers", input.customerId, "update", before, { ...updated, adminInputerOrderId: input.orderId });
+    await client.query("COMMIT");
+    return { name: updated.name, phone: updated.phone, address: updated.address, city: updated.city, province: updated.province, customerVersion: updated.customer_version };
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw error;
+  } finally { client.release(); }
 }

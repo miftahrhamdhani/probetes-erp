@@ -1,6 +1,8 @@
 import type { PoolClient } from "pg";
 import { query } from "@/server/common/db";
 import type {
+  AdminInputerResult,
+  AdminInputerUpdateInput,
   ImportPlatform,
   ImportValidationStatus,
   MarketplaceImportType,
@@ -340,6 +342,17 @@ export async function insertOrderWithItem(
       $1,$2,$3,$4,$5,$6,'valid'
     )
   `, [orderId, data.productId, data.product, data.qty, data.unitPrice, data.total]);
+  const trackingNumber = String(data.trackingNumber ?? "").trim();
+  if (trackingNumber) {
+    await client.query(`
+      INSERT INTO tracking.shipments (
+        shipment_id, order_id, tracking_number, customer_id, payment_method, package_status, flag
+      ) VALUES (
+        'PB-SHIP-IMP-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)),
+        $1,$2,$3,$4,'Menunggu Pickup','valid'
+      )
+    `, [orderId, trackingNumber, customerId, data.paymentMethod]);
+  }
   await client.query(`
     UPDATE master.customers
     SET transaction_count = (SELECT count(*) FROM orders.orders WHERE customer_id = $1)
@@ -420,4 +433,119 @@ export function listBatchRows(batchId: string) {
     WHERE batch_id = $1
     ORDER BY row_number
   `, [batchId]);
+}
+
+interface AdminOrderRow {
+  order_id: string;
+  order_date: string | null;
+  platform: ImportPlatform;
+  store_id: string;
+  store_name: string;
+  order_status: string | null;
+  payment_method: string | null;
+  total_amount: number | null;
+  channel: string | null;
+  courier: string | null;
+  tracking_number: string | null;
+  package_status: string | null;
+  customer_id: string;
+  customer_version: string;
+  name: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+  items: AdminInputerResult["items"];
+}
+
+/** Cari pesanan import marketplace secara exact; tidak memakai partial/fuzzy search. */
+export async function findAdminInputerOrders(client: PoolClient, input: {
+  platform: ImportPlatform;
+  storeId: string;
+  orderId?: string;
+  trackingNumber?: string;
+}): Promise<AdminOrderRow[]> {
+  const result = await client.query<AdminOrderRow>(`
+    SELECT o.order_id, o.order_date::text, b.platform,
+      b.store_option_id::text AS store_id, b.store_name,
+      o.order_status, o.payment_method, o.total_amount,
+      ch.channel_final_name AS channel, co.courier_final_name AS courier,
+      sh.tracking_number, sh.package_status,
+      cu.customer_id, cu.xmin::text AS customer_version,
+      cu.name, cu.phone, cu.address, cu.city, cu.province,
+      coalesce(items.items, '[]'::jsonb) AS items
+    FROM orders.orders o
+    JOIN marketing.import_batches b ON b.batch_id::text = o.source_file_id
+    JOIN master.customers cu ON cu.customer_id = o.customer_id
+    LEFT JOIN master.channels ch ON ch.channel_id = o.channel_id
+    LEFT JOIN master.couriers co ON co.courier_id = o.courier_id
+    LEFT JOIN LATERAL (
+      SELECT tracking_number, package_status
+      FROM tracking.shipments
+      WHERE order_id = o.order_id
+      ORDER BY shipment_id
+      LIMIT 1
+    ) sh ON true
+    LEFT JOIN LATERAL (
+      SELECT jsonb_agg(jsonb_build_object(
+        'productId', oi.product_id,
+        'productName', coalesce(p.product_final_name, oi.original_product_name, '-'),
+        'quantity', oi.qty,
+        'unitPrice', oi.unit_price,
+        'subtotal', oi.subtotal,
+        'status', oi.status
+      ) ORDER BY oi.order_item_id) AS items
+      FROM orders.order_items oi
+      LEFT JOIN master.products p ON p.product_id = oi.product_id
+      WHERE oi.order_id = o.order_id
+    ) items ON true
+    WHERE b.import_type = 'order' AND b.status = 'completed'
+      AND b.platform = $1 AND b.store_option_id = $2::uuid
+      AND ($3::text IS NOT NULL AND o.order_id = $3
+        OR $3::text IS NULL AND $4::text IS NOT NULL AND sh.tracking_number = $4)
+    ORDER BY o.order_date DESC NULLS LAST, o.order_id
+    LIMIT 10
+  `, [input.platform, input.storeId, input.orderId || null, input.trackingNumber || null]);
+  return result.rows;
+}
+
+export function findPhoneCandidates(client: PoolClient, normalizedPhone: string, excludeCustomerId: string) {
+  return client.query<{ customer_id: string; name: string; transaction_count: number }>(`
+    SELECT customer_id, coalesce(name, '-') AS name, coalesce(transaction_count, 0) AS transaction_count
+    FROM master.customers
+    WHERE phone_normalized = $1 AND customer_id <> $2 AND coalesce(status, '') <> 'Arsip'
+    ORDER BY customer_id
+    LIMIT 10
+  `, [normalizedPhone, excludeCustomerId]);
+}
+
+export async function loadAdminCustomerForUpdate(client: PoolClient, orderId: string, customerId: string) {
+  const result = await client.query<{
+    customer_id: string; customer_version: string; name: string | null; phone: string | null;
+    address: string | null; city: string | null; province: string | null;
+  }>(`
+    SELECT cu.customer_id, cu.xmin::text AS customer_version,
+      cu.name, cu.phone, cu.address, cu.city, cu.province
+    FROM orders.orders o
+    JOIN master.customers cu ON cu.customer_id = o.customer_id
+    WHERE o.order_id = $1 AND cu.customer_id = $2
+    FOR UPDATE OF cu
+  `, [orderId, customerId]);
+  return result.rows[0] ?? null;
+}
+
+export async function updateAdminCustomerIdentity(client: PoolClient, input: AdminInputerUpdateInput, normalizedPhone: string) {
+  const result = await client.query<{
+    customer_id: string; customer_version: string; name: string; phone: string;
+    address: string; city: string; province: string;
+  }>(`
+    UPDATE master.customers
+    SET name = $3, phone = $4, phone_normalized = $5,
+      address = $6, city = $7, province = $8
+    WHERE customer_id = $1 AND xmin::text = $2
+    RETURNING customer_id, xmin::text AS customer_version,
+      coalesce(name, '') AS name, coalesce(phone, '') AS phone,
+      coalesce(address, '') AS address, coalesce(city, '') AS city, coalesce(province, '') AS province
+  `, [input.customerId, input.customerVersion, input.name, input.phone, normalizedPhone, input.address, input.city, input.province]);
+  return result.rows[0] ?? null;
 }

@@ -17,7 +17,8 @@ export function findHeader(lookup: Map<string, string>, aliases: readonly string
 
 /** Ambil nilai sel apa adanya (trim) untuk header tertentu. */
 export function field(row: Record<string, string>, header: string | null): string {
-  return header ? String(row[header] ?? "").trim() : "";
+  const value = header ? String(row[header] ?? "").trim() : "";
+  return /^(?:-|–|—|--|n\/?a|null)$/i.test(value) ? "" : value;
 }
 
 /** Deteksi platform dari header untuk peringatan salah-file. */

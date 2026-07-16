@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import {
   Bot,
+  BriefcaseBusiness,
   ChevronRight,
   Database,
   FileText,
@@ -10,7 +11,8 @@ import {
   Settings,
   Truck,
   Users,
-  Wallet
+  Wallet,
+  Warehouse
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { LauncherModule } from "../types/launcher.types";
@@ -29,9 +31,10 @@ const moduleIcon: Record<string, LucideIcon> = {
   marketing: Megaphone,
   reports: FileText,
   finance: Wallet,
-  gudang: Package,
+  gudang: Warehouse,
   database: Database,
   "data-tracking": Truck,
+  hris: BriefcaseBusiness,
   "user-management": Users,
   "ai-assistant": Bot,
   setting: Settings

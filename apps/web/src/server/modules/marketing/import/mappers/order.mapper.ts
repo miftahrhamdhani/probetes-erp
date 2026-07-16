@@ -79,12 +79,15 @@ export function mapOrderRows(
       notes.push("Nomor HP perlu dicek.");
     }
 
-    const duplicateKey = invoice ? `${platform}|${invoice.toLocaleLowerCase("id-ID").trim()}` : null;
-    if (duplicateKey && seen.has(duplicateKey) && status !== "error") {
+    const orderKey = invoice ? `${platform}|${invoice.toLocaleLowerCase("id-ID").trim()}` : null;
+    const itemSignature = orderKey
+      ? [orderKey, product, qty ?? "", unitPrice ?? "", total ?? ""].map((part) => String(part).toLocaleLowerCase("id-ID").trim()).join("|")
+      : null;
+    if (itemSignature && seen.has(itemSignature) && status !== "error") {
       status = "duplicate";
-      notes.push("No invoice duplikat ditemukan di file yang sama.");
+      notes.push("Baris produk yang sama terulang di file dan tidak akan ditambahkan lagi.");
     }
-    if (duplicateKey) seen.add(duplicateKey);
+    if (itemSignature) seen.add(itemSignature);
 
     const trackingNumber = field(raw, mappedHeaders.trackingNumber);
     const email = field(raw, mappedHeaders.email);
@@ -132,7 +135,7 @@ export function mapOrderRows(
       display,
       status,
       notes,
-      duplicateKey,
+      duplicateKey: itemSignature,
       targetEntity: "orders",
     };
   });

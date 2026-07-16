@@ -1,4 +1,6 @@
 import type {
+  AdminInputerResult,
+  AdminInputerUpdateInput,
   ImportCommitResponse,
   ImportHistoryEntry,
   ImportOptionsByPlatform,
@@ -14,10 +16,16 @@ interface ApiEnvelope<T> {
   error?: string;
 }
 
+export class ImportApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly candidates?: AdminInputerResult["phoneCandidates"]) {
+    super(message);
+  }
+}
+
 async function apiRequest<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { ...init, cache: "no-store" });
-  const body = await response.json().catch(() => ({})) as Partial<ApiEnvelope<T>> & { message?: string };
-  if (!response.ok) throw new Error(body.error ?? body.message ?? "Permintaan gagal diproses.");
+  const body = await response.json().catch(() => ({})) as Partial<ApiEnvelope<T>> & { message?: string; candidates?: AdminInputerResult["phoneCandidates"] };
+  if (!response.ok) throw new ImportApiError(body.error ?? body.message ?? "Permintaan gagal diproses.", response.status, body.candidates);
   if ("data" in body) return body.data as T;
   return body as T;
 }
@@ -92,4 +100,20 @@ export function fetchImportHistory(limit = 20): Promise<ImportHistoryEntry[]> {
 
 export function fetchImportHistoryDetail(id: string): Promise<ImportHistoryEntry> {
   return apiRequest<ImportHistoryEntry>(`/api/marketing/import/history/${encodeURIComponent(id)}`);
+}
+
+export function searchAdminInputer(input: { platform: "tiktok" | "shopee"; storeId: string; orderId?: string; trackingNumber?: string }): Promise<AdminInputerResult> {
+  return apiRequest<AdminInputerResult>("/api/marketing/import/admin-inputer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function saveAdminInputer(input: AdminInputerUpdateInput): Promise<AdminInputerResult["customer"] & { customerVersion: string }> {
+  return apiRequest("/api/marketing/import/admin-inputer", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }

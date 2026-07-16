@@ -27,6 +27,7 @@ import type {
   ImportOptionsByPlatform,
   ImportPlatform,
   ImportPreviewResponse,
+  ImportPreviewRow,
   ImportSourceOption,
   ImportValidationStatus,
   MarketplaceImportType,
@@ -42,6 +43,7 @@ import {
   removeImportOption,
   renameImportOption,
 } from "./importApi";
+import { AdminInputerPanel } from "./AdminInputerPanel";
 import {
   ChipSelector,
   ImportTypeCard,
@@ -65,6 +67,7 @@ const EMPTY_OPTIONS = (): ImportOptionsByPlatform => ({
 type ValidationFilter = "all" | ImportValidationStatus;
 
 export default function MarketingImportPage() {
+  const [mode, setMode] = useState<"massal" | "admin">("massal");
   const [selectedPlatform, setSelectedPlatform] = useState<ImportPlatform | null>(null);
   const [selectedImportType, setSelectedImportType] = useState<MarketplaceImportType | null>(null);
   const [selectedAdvId, setSelectedAdvId] = useState<string | null>(null);
@@ -306,7 +309,14 @@ export default function MarketingImportPage() {
     setErrorMessage("");
     try {
       const detail = entry.rows ? entry : await fetchImportHistoryDetail(entry.id);
-      downloadCsv(`${shortBatchId(entry.id)}_${entry.fileName.replace(/\.[^.]+$/, "")}.csv`, detail.rows?.map((row) => row.data) ?? []);
+      const detailRows = detail.rows ?? [];
+      const columns = historyColumns(detailRows, detail.importType);
+      const exportRows = detailRows.map((row) => ({
+        ...row.data,
+        "Status Validasi": validationLabel(row.status),
+        "Catatan Validasi": row.notes.join(" ") || "Data siap disimpan.",
+      }));
+      downloadCsv(`${shortBatchId(entry.id)}_${entry.fileName.replace(/\.[^.]+$/, "")}.csv`, exportRows, columns);
     } catch (error) {
       setErrorMessage(errorMessageOf(error));
     } finally {
@@ -382,7 +392,7 @@ export default function MarketingImportPage() {
             </div>
           )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div><label className="mb-1 block text-sm font-bold text-slate-800">Periode (opsional)</label><input value={period} onChange={(event) => setPeriod(event.target.value)} placeholder="cth: Juli 2026" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-red" /></div>
+            <div><label className="mb-1 block text-sm font-bold text-slate-800">Periode laporan <span className="font-medium text-slate-500">(wajib jika file tidak memiliki tanggal)</span></label><input value={period} onChange={(event) => setPeriod(event.target.value)} placeholder="cth: Juni 2026" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-red" /></div>
             <div><label className="mb-1 block text-sm font-bold text-slate-800">Catatan Import (opsional)</label><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="cth: batch pertama" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-red" /></div>
           </div>
           <div>
@@ -458,15 +468,18 @@ export default function MarketingImportPage() {
     <div className="min-h-screen overflow-x-hidden bg-[#eef2f6]/90 text-brand-deep">
       <main className="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-5 py-6 sm:px-7 lg:px-10">
         <DummyBanner />
-        <div><h1 className="text-3xl font-extrabold tracking-[-0.03em] text-slate-900">Import Data Channel</h1><p className="mt-2 text-sm font-medium text-slate-600">Pilih sumber, upload file, cek hasil validasi, lalu simpan jika sudah sesuai.</p></div>
-        <StepIndicator currentStep={currentStep} />
-        {errorMessage && <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"><AlertCircle className="mt-0.5 size-4 shrink-0" /><span>{errorMessage}</span><button onClick={() => setErrorMessage("")} className="ml-auto"><X className="size-4" /></button></div>}
-        {isLoadingInitial && currentStep === 1 ? <LoadingPanel label="Memuat pilihan import..." /> : null}
-        {!isLoadingInitial && currentStep === 1 ? renderPlatformStep() : null}
-        {currentStep === 2 ? renderImportTypeStep() : null}
-        {currentStep === 3 ? renderDetailStep() : null}
-        {currentStep === 4 ? renderPreviewStep() : null}
-        <HistoryPanel history={history} loading={isLoadingInitial || isHistoryLoading} onView={(entry) => void openHistory(entry)} onDownload={(entry) => void downloadHistory(entry)} />
+        <div><h1 className="text-3xl font-extrabold tracking-[-0.03em] text-slate-900">Import Data Channel</h1><p className="mt-2 text-sm font-medium text-slate-600">Import data massal atau lengkapi identitas pelanggan dari pesanan marketplace yang sudah tersimpan.</p></div>
+        <div className="inline-flex w-fit rounded-2xl border border-slate-200 bg-white p-1 shadow-sm"><button type="button" onClick={() => setMode("massal")} className={`rounded-xl px-5 py-2.5 text-sm font-bold transition ${mode === "massal" ? "bg-brand-red text-white" : "text-slate-600 hover:bg-slate-50"}`}>Import Massal</button><button type="button" onClick={() => setMode("admin")} className={`rounded-xl px-5 py-2.5 text-sm font-bold transition ${mode === "admin" ? "bg-brand-red text-white" : "text-slate-600 hover:bg-slate-50"}`}>Admin Inputer</button></div>
+        {mode === "admin" ? <AdminInputerPanel options={options} /> : <>
+          <StepIndicator currentStep={currentStep} />
+          {errorMessage && <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"><AlertCircle className="mt-0.5 size-4 shrink-0" /><span>{errorMessage}</span><button onClick={() => setErrorMessage("")} className="ml-auto"><X className="size-4" /></button></div>}
+          {isLoadingInitial && currentStep === 1 ? <LoadingPanel label="Memuat pilihan import..." /> : null}
+          {!isLoadingInitial && currentStep === 1 ? renderPlatformStep() : null}
+          {currentStep === 2 ? renderImportTypeStep() : null}
+          {currentStep === 3 ? renderDetailStep() : null}
+          {currentStep === 4 ? renderPreviewStep() : null}
+          <HistoryPanel history={history} loading={isLoadingInitial || isHistoryLoading} onView={(entry) => void openHistory(entry)} onDownload={(entry) => void downloadHistory(entry)} />
+        </>}
         <div className="flex"><MarketingBackButton /></div>
       </main>
       <footer className="pb-7 pt-3 text-center text-xs font-medium text-slate-500 sm:text-sm">© 2026 Probetes ERP. All rights reserved.</footer>
@@ -547,7 +560,7 @@ function HistoryStatus({ status }: { status: ImportHistoryEntry["status"] }) {
 
 function HistoryModal({ entry, rows, virtualizer, page, totalPages, pageSize, start, onPageChange, onPageSizeChange, onClose, onDownload }: { entry: ImportHistoryEntry; rows: NonNullable<ImportHistoryEntry["rows"]>; virtualizer: ReturnType<typeof useRowVirtualizer<HTMLDivElement>>; page: number; totalPages: number; pageSize: number; start: number; onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void; onClose: () => void; onDownload: () => void }) {
   const allRows = entry.rows ?? [];
-  const columns = allRows[0] ? Object.keys(allRows[0].data) : [];
+  const columns = historyColumns(allRows, entry.importType);
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}><div className="flex max-h-[88vh] w-full max-w-6xl flex-col rounded-[24px] bg-white p-6 shadow-xl sm:p-8" onClick={(event) => event.stopPropagation()}><div className="mb-4 flex items-start justify-between border-b border-slate-100 pb-4"><div><h3 className="text-lg font-bold text-slate-900">{shortBatchId(entry.id)} — {sourceLabel(entry)}</h3><p className="text-sm text-slate-500">{formatDateTime(entry.createdAt)} • {entry.fileName} • {entry.totalRows.toLocaleString("id-ID")} baris</p></div><button onClick={onClose} className="flex size-8 items-center justify-center rounded-full bg-slate-100"><X className="size-4" /></button></div><div className="mb-3 flex items-center justify-end gap-2"><span className="text-xs font-semibold text-slate-500">Tampilkan</span><select value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))} className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold">{[10, 20, 50, 100].map((value) => <option key={value} value={value}>{value}</option>)}<option value={allRows.length || 1}>Semua</option></select></div><div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-200"><div ref={virtualizer.containerRef} className="max-h-[54vh] overflow-auto"><table className="w-full whitespace-nowrap text-left text-sm"><thead className="sticky top-0 z-10 bg-slate-50"><tr>{columns.map((column) => <th key={column} className="border-b border-slate-200 p-3 text-slate-500">{column}</th>)}</tr></thead><tbody>{virtualizer.topSpacer > 0 && <tr style={{ height: virtualizer.topSpacer }}><td colSpan={columns.length} /></tr>}{rows.map((row) => <tr key={row.rowId ?? row.rowNumber} className="border-b border-slate-100">{columns.map((column) => <PreviewCell key={column} column={column} row={row} />)}</tr>)}{virtualizer.bottomSpacer > 0 && <tr style={{ height: virtualizer.bottomSpacer }}><td colSpan={columns.length} /></tr>}</tbody></table>{allRows.length === 0 && <div className="p-8 text-center text-sm text-slate-500">Tidak ada baris pada riwayat ini.</div>}</div>{totalPages > 1 && <Pagination page={page} totalPages={totalPages} start={start} pageSize={pageSize} totalRows={allRows.length} onChange={onPageChange} />}</div><div className="mt-4 flex justify-end gap-3 border-t border-slate-100 pt-4"><button onClick={onClose} className="rounded-xl px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100">Tutup</button><button onClick={onDownload} className="inline-flex items-center gap-2 rounded-xl bg-brand-red px-5 py-2.5 text-sm font-bold text-white"><Download className="size-4" /> Download CSV</button></div></div></div>;
 }
 
@@ -576,9 +589,25 @@ function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : "Terjadi kesalahan. Silakan coba lagi.";
 }
 
-function downloadCsv(filename: string, rows: Array<Record<string, string | number | null>>) {
+function validationLabel(status: ImportValidationStatus): string {
+  return status === "valid" ? "Valid" : status === "review" ? "Perlu Dicek" : status === "duplicate" ? "Duplikat" : "Error";
+}
+
+function historyColumns(rows: ImportPreviewRow[], importType: MarketplaceImportType): string[] {
+  const dateColumn = importType === "ads" ? "Tanggal" : "Tanggal Pesanan";
+  const preferred = importType === "ads"
+    ? ["Tanggal", "Tanggal Akhir", "Platform", "ADV", "Campaign", "Adset / Grup Iklan", "Nama Iklan", "ID Campaign", "ID Produk", "Spending", "Nilai Pembelian"]
+    : ["Tanggal Pesanan", "Platform", "Toko", "No Invoice", "No Resi", "Customer", "No HP", "Email", "Produk", "Qty", "Harga Produk", "Total Bayar", "Metode Bayar"];
+  const available = new Set(rows.flatMap((row) => Object.keys(row.data)));
+  const columns = [dateColumn, ...preferred.filter((column) => column !== dateColumn), ...[...available].filter((column) => !preferred.includes(column))];
+  if (!columns.includes("Status Validasi")) columns.push("Status Validasi");
+  if (!columns.includes("Catatan Validasi")) columns.push("Catatan Validasi");
+  return columns;
+}
+
+function downloadCsv(filename: string, rows: Array<Record<string, string | number | null>>, columns?: string[]) {
   if (rows.length === 0) return;
-  const headers = Object.keys(rows[0]!);
+  const headers = columns ?? Object.keys(rows[0]!);
   const escape = (value: unknown) => {
     const text = String(value ?? "");
     return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;

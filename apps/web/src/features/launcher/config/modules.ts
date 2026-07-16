@@ -28,11 +28,11 @@ export const erpModules = [
   },
   {
     id: "gudang",
-    name: "Gudang",
-    description: "Stok, keluar masuk barang, fulfillment.",
-    badge: "Next soon",
+    name: "Warehouse / Gudang",
+    description: "Stok, keluar masuk barang, mutasi, dan stock opname.",
+    badge: "Bertahap",
     badgeTone: "neutral",
-    href: "/gudang"
+    href: "/warehouse"
   },
   {
     id: "database",
@@ -50,6 +50,14 @@ export const erpModules = [
     badge: "Next soon",
     badgeTone: "neutral",
     href: "/data-tracking"
+  },
+  {
+    id: "hris",
+    name: "HRIS",
+    description: "Kelola data karyawan, absensi, cuti, payroll, komisi CS/CRM/ADV, dan laporan HRD.",
+    badge: "Bertahap",
+    badgeTone: "neutral",
+    href: "/hris"
   },
   {
     id: "user-management",

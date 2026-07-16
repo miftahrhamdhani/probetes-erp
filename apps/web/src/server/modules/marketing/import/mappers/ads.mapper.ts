@@ -1,5 +1,5 @@
 import type { ImportPlatform, ImportValidationStatus, ParsedImportFile, ParsedImportRow } from "../import.types";
-import { parseImportDate, parseImportNumber, PLATFORM_LABEL } from "../utils";
+import { parseCampaignTimestamp, parseImportDate, parseImportMonth, parseImportNumber, PLATFORM_LABEL } from "../utils";
 import { escalateStatus, finalizeFile } from "../validators/row-status";
 import { ADS_ALIASES } from "./aliases";
 import { buildHeaderLookup, detectPlatformMismatch, field, findHeader } from "./header";
@@ -10,18 +10,20 @@ export function mapAdsRows(
   headers: string[],
   platform: ImportPlatform,
   advName: string,
+  periodLabel = "",
 ): ParsedImportFile {
   const lookup = buildHeaderLookup(headers);
   const mappedHeaders = Object.fromEntries(
     Object.entries(ADS_ALIASES).map(([key, aliases]) => [key, findHeader(lookup, aliases)]),
   ) as Record<keyof typeof ADS_ALIASES, string | null>;
   const fileErrors: string[] = [];
+  const reportMonth = platform === "tiktok" ? parseImportMonth(periodLabel) : null;
   const missing = [
-    [mappedHeaders.reportDate, "tanggal"],
+    [mappedHeaders.reportDate || reportMonth, "tanggal/periode laporan"],
     [mappedHeaders.campaign, "campaign"],
     [mappedHeaders.spend, "spending"],
   ].filter(([header]) => !header).map(([, label]) => label as string);
-  if (missing.length) fileErrors.push(`Kolom wajib tidak ditemukan: ${missing.join(", ")}.`);
+  if (missing.length) fileErrors.push(`Kolom wajib tidak ditemukan: ${missing.join(", ")}. Isi periode seperti Juni 2026 jika file TikTok tidak memiliki tanggal laporan.`);
   const mismatch = detectPlatformMismatch(headers, platform);
   if (mismatch) fileErrors.push(mismatch);
 
@@ -31,19 +33,24 @@ export function mapAdsRows(
     const notes = [...fileErrors];
     if (fileErrors.length) status = "error";
     const reportDateRaw = field(raw, mappedHeaders.reportDate);
-    const reportDate = parseImportDate(reportDateRaw);
+    const fileReportDate = parseImportDate(reportDateRaw);
     const reportEndDateRaw = field(raw, mappedHeaders.reportEndDate);
-    const reportEndDate = reportEndDateRaw ? parseImportDate(reportEndDateRaw) : reportDate;
+    const fileReportEndDate = reportEndDateRaw ? parseImportDate(reportEndDateRaw) : fileReportDate;
+    const usesMonthlyFallback = !mappedHeaders.reportDate && Boolean(reportMonth);
+    const reportDate = fileReportDate ?? (usesMonthlyFallback ? reportMonth!.start : null);
+    const reportEndDate = fileReportEndDate ?? (usesMonthlyFallback ? reportMonth!.end : reportDate);
     const campaign = field(raw, mappedHeaders.campaign);
     const spendRaw = field(raw, mappedHeaders.spend);
     const spend = parseImportNumber(spendRaw);
 
-    if (!reportDateRaw) {
+    if (!reportDateRaw && !usesMonthlyFallback) {
       status = escalateStatus(status, "review");
-      notes.push("Tanggal belum diisi.");
-    } else if (!reportDate) {
+      notes.push("Tanggal/periode laporan belum diisi.");
+    } else if (reportDateRaw && !fileReportDate) {
       status = escalateStatus(status, "error");
       notes.push("Format tanggal tidak valid.");
+    } else if (usesMonthlyFallback) {
+      notes.push(`Tanggal laporan memakai periode ${reportMonth!.label}; data diperlakukan sebagai agregat bulanan.`);
     }
     if (reportEndDateRaw && !reportEndDate) {
       status = escalateStatus(status, "error");
@@ -73,6 +80,9 @@ export function mapAdsRows(
     };
     const adset = field(raw, mappedHeaders.adset);
     const adName = field(raw, mappedHeaders.adName);
+    const adId = field(raw, mappedHeaders.adId);
+    const creativePublishedAt = field(raw, mappedHeaders.creativePublishedAt);
+    const campaignCreatedAt = parseCampaignTimestamp(campaign);
     const campaignId = field(raw, mappedHeaders.campaignId);
     const productId = field(raw, mappedHeaders.productId);
     const impressions = number(mappedHeaders.impressions);
@@ -80,9 +90,14 @@ export function mapAdsRows(
     const leads = number(mappedHeaders.leads);
     const purchaseValue = number(mappedHeaders.purchaseValue);
     const deliveryStatus = field(raw, mappedHeaders.status);
-    const duplicateKey = reportDate && campaign
-      ? [platform, advName, reportDate, campaign, adName].map((part) => part.toLocaleLowerCase("id-ID").trim()).join("|")
+    const duplicateIdentity = usesMonthlyFallback ? adId : adId || adName || campaign;
+    const duplicateKey = reportDate && duplicateIdentity
+      ? [platform, advName, reportDate, reportEndDate ?? reportDate, duplicateIdentity].map((part) => part.toLocaleLowerCase("id-ID").trim()).join("|")
       : null;
+    if (usesMonthlyFallback && !adId) {
+      status = escalateStatus(status, "review");
+      notes.push("ID video belum tersedia; data bulanan perlu dicek agar tidak terhitung ganda.");
+    }
     if (duplicateKey && seen.has(duplicateKey) && status !== "error") {
       status = "duplicate";
       notes.push("Baris duplikat ditemukan di file yang sama.");
@@ -92,17 +107,22 @@ export function mapAdsRows(
     const display = {
       Tanggal: reportDate ?? (reportDateRaw || "-"),
       "Tanggal Akhir": reportEndDate ?? (reportEndDateRaw || reportDate || "-"),
+      "Cakupan Laporan": usesMonthlyFallback ? `Agregat bulanan ${reportMonth!.label}` : "Sesuai tanggal file",
       Platform: PLATFORM_LABEL[platform],
       ADV: advName,
       Campaign: campaign || "-",
+      "Waktu Dibuat Campaign": campaignCreatedAt || "-",
       "Adset / Grup Iklan": adset || "-",
-      "Nama Iklan": adName || "-",
+      "Nama Iklan / Judul Video": adName || "-",
+      "ID Iklan / Video": adId || "-",
+      "Waktu Posting Video": creativePublishedAt || "-",
       "ID Campaign": campaignId || "-",
       "ID Produk": productId || "-",
       Spending: spend === null ? "-" : Math.round(spend),
+      "Nilai Konversi Platform": purchaseValue === null ? "-" : Math.round(purchaseValue),
       "Impression / Tayangan": impressions,
       Click: clicks,
-      "Leads / Result": leads,
+      "Konversi / Pesanan": leads,
       Status: deliveryStatus || "-",
     };
     return {
@@ -114,6 +134,11 @@ export function mapAdsRows(
         campaign,
         adset,
         adName,
+        adId,
+        creativePublishedAt,
+        campaignCreatedAt,
+        reportGranularity: usesMonthlyFallback ? "month" : "day",
+        reportDateSource: usesMonthlyFallback ? "period" : "file",
         campaignId,
         productId,
         spend: spend === null ? null : Math.round(spend),

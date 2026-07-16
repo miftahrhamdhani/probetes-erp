@@ -66,6 +66,7 @@ export interface ImportHistoryEntry extends ImportValidationSummary {
   failedRows: number;
   committedAt: string | null;
   rows?: ImportPreviewRow[];
+  columns?: string[];
 }
 
 export interface ImportCommitResponse {
@@ -95,4 +96,45 @@ export interface ParsedImportFile {
   periodStart: string | null;
   periodEnd: string | null;
   fileErrors: string[];
+}
+
+export interface AdminInputerItem {
+  productId: string | null;
+  productName: string;
+  quantity: number | null;
+  unitPrice: number | null;
+  subtotal: number | null;
+  status: string | null;
+}
+
+export interface AdminInputerResult {
+  orderId: string;
+  orderDate: string | null;
+  platform: ImportPlatform;
+  storeId: string;
+  storeName: string;
+  orderStatus: string | null;
+  paymentMethod: string | null;
+  totalAmount: number | null;
+  channel: string | null;
+  courier: string | null;
+  trackingNumber: string | null;
+  packageStatus: string | null;
+  customerId: string;
+  customerVersion: string;
+  customer: { name: string; phone: string; address: string; city: string; province: string };
+  items: AdminInputerItem[];
+  phoneCandidates: Array<{ customerId: string; name: string; transactionCount: number }>;
+}
+
+export interface AdminInputerUpdateInput {
+  orderId: string;
+  customerId: string;
+  customerVersion: string;
+  name: string;
+  phone: string;
+  address: string;
+  city: string;
+  province: string;
+  acknowledgeDuplicatePhone?: boolean;
 }

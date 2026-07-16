@@ -9,6 +9,37 @@ export const PLATFORM_LABEL: Record<ImportPlatform, string> = {
   meta: "Meta / Akuisisi",
 };
 
+const INDONESIAN_MONTHS = [
+  "januari", "februari", "maret", "april", "mei", "juni",
+  "juli", "agustus", "september", "oktober", "november", "desember",
+];
+
+/** Ubah periode bulan Indonesia (contoh: Juni 2026) menjadi rentang tanggal penuh. */
+export function parseImportMonth(value: string): { label: string; start: string; end: string } | null {
+  const match = value.trim().toLocaleLowerCase("id-ID").replace(/\s+/g, " ").match(/^([a-z]+)\s+(\d{4})$/);
+  if (!match) return null;
+  const month = INDONESIAN_MONTHS.indexOf(match[1]!);
+  const year = Number(match[2]);
+  if (month < 0 || year < 2000 || year > 2100) return null;
+  const start = new Date(Date.UTC(year, month, 1));
+  const end = new Date(Date.UTC(year, month + 1, 0));
+  return {
+    label: `${INDONESIAN_MONTHS[month]![0]!.toLocaleUpperCase("id-ID")}${INDONESIAN_MONTHS[month]!.slice(1)} ${year}`,
+    start: start.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10),
+  };
+}
+
+/** Ambil timestamp YYYYMMDDHHmmss yang tertanam di akhir nama campaign TikTok. */
+export function parseCampaignTimestamp(value: string): string | null {
+  const match = value.match(/(?:^|_)(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+  if (!match) return null;
+  const [year, month, day, hour, minute, second] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year!, month! - 1, day!, hour!, minute!, second!));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month! - 1 || date.getUTCDate() !== day) return null;
+  return `${date.toISOString().slice(0, 10)} ${date.toISOString().slice(11, 19)}`;
+}
+
 /** Normalisasi header agar cocok lintas variasi ejaan platform (buang aksen/simbol). */
 export function normalizeImportHeader(value: string): string {
   return value
@@ -25,6 +56,11 @@ export function normalizeImportHeader(value: string): string {
 export function parseImportDate(value: string): string | null {
   const raw = value.trim();
   if (!raw) return null;
+  const numeric = Number(raw);
+  if (/^\d+(?:\.\d+)?$/.test(raw) && Number.isFinite(numeric) && numeric >= 1 && numeric <= 100000) {
+    const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(numeric) * 86_400_000);
+    return date.toISOString().slice(0, 10);
+  }
   const iso = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
   const local = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
   const parts = iso
@@ -72,6 +108,6 @@ export function parseImportNumber(value: string): number | null {
 export function normalizeImportPhone(value: string): string | null {
   const digits = value.replace(/\D/g, "");
   if (!digits) return null;
-  const normalized = digits.startsWith("0") ? `62${digits.slice(1)}` : digits;
+  const normalized = digits.startsWith("0") ? `62${digits.slice(1)}` : digits.startsWith("8") ? `62${digits}` : digits;
   return normalized.length >= 10 && normalized.length <= 15 ? normalized : null;
 }
